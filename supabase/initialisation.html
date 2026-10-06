@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <link rel="icon" type="image/png" href="../web/assets/img/favicon.png">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Retour CI 360 — Initialisation de la base de démonstration</title>
+  <link rel="stylesheet" href="../web/assets/css/app.css">
+</head>
+<body>
+  <header class="topbar"><span class="brand"><span class="logo"><img src="../web/assets/img/embleme.png" alt=""></span>Initialisation de la base de démonstration</span></header>
+  <main class="page" style="max-width:760px">
+    <div class="notice warn" style="margin-bottom:16px">
+      <span>Outil réservé à l'administrateur du POC. La clé de service n'est ni enregistrée ni transmise ailleurs qu'à Supabase ; elle reste dans cette page le temps de l'opération. Ne jamais la placer dans <code>config.js</code>.</span>
+    </div>
+    <div class="card stack">
+      <div><label class="q">Adresse du projet Supabase</label><input id="url" class="input" placeholder="https://xxxx.supabase.co"></div>
+      <div><label class="q">Clé de service (service_role)</label><input id="key" class="input" type="password" autocomplete="off"></div>
+      <div><label class="q">Mot de passe commun des comptes de démonstration</label><input id="pwd" class="input" type="text" placeholder="12 caractères minimum"></div>
+      <div class="row">
+        <button class="btn primary" id="init">Créer les comptes et charger les données fictives</button>
+        <button class="btn danger" id="purge">Vider les dossiers</button>
+      </div>
+    </div>
+    <pre id="log" class="card" style="margin-top:16px;white-space:pre-wrap;font-size:13px;min-height:120px"></pre>
+  </main>
+  <script src="../web/assets/vendor/supabase.js"></script>
+  <script src="../web/assets/data/dictionnaire.js"></script>
+  <script src="../web/assets/data/referentiels.js"></script>
+  <script src="../web/assets/data/metier_gen.js"></script>
+  <script src="../web/assets/data/metier.js"></script>
+  <script src="../web/assets/js/ui.js"></script>
+  <script src="../web/assets/js/store.js"></script>
+  <script src="../web/assets/js/domaine.js"></script>
+  <script src="../web/assets/js/seed.js"></script>
+  <script src="../web/assets/js/admin.js"></script>
+  <script>
+    const DOMAINE = 'demo.retour360.ci';
+    const log = (m) => { document.getElementById('log').textContent += m + '\n'; };
+    const client = () => {
+      const url = document.getElementById('url').value.trim(), key = document.getElementById('key').value.trim();
+      if (!url || !key) throw new Error('Adresse et clé de service requises.');
+      return supabase.createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+    };
+    const ok = (r) => { if (r.error) throw r.error; return r.data; };
+
+    document.getElementById('init').onclick = async () => {
+      try {
+        const c = client(); const pwd = document.getElementById('pwd').value;
+        if (pwd.length < 12) throw new Error('Mot de passe de 12 caractères minimum.');
+        const M = window.METIER;
+        log('1. Structures, matrice d\'habilitations, annuaire et tablettes…');
+        const A = Admin.donneesInitiales();
+        ok(await c.from('structures').upsert(M.structures.map((x) => ({ code: x.code, nom: x.nom }))));
+        if (!ok(await c.from('structures_cfg').select('id')).length) ok(await c.from('structures_cfg').upsert(A.structures));
+        if (!ok(await c.from('annuaire').select('id')).length) ok(await c.from('annuaire').upsert(A.annuaire));
+        if (!ok(await c.from('tablettes').select('id')).length) ok(await c.from('tablettes').upsert(A.tablettes));
+
+        log('2. Comptes de connexion (un par entrée active de l\'annuaire, nouveaux comptes compris)…');
+        const annuaire = ok(await c.from('annuaire').select('*'));
+        const existants = ok(await c.auth.admin.listUsers({ perPage: 500 })).users;
+        for (const p of annuaire) {
+          const email = `${p.id}@${DOMAINE}`;
+          let u = existants.find((x) => x.email === email);
+          if (u) ok(await c.auth.admin.updateUserById(u.id, { password: pwd }));
+          else u = ok(await c.auth.admin.createUser({ email, password: pwd, email_confirm: true })).user;
+          ok(await c.from('profils').upsert({ user_id: u.id, profil_id: p.id, nom: p.nom, role: p.role, structure: p.structure }));
+          log('   ' + email + ' — ' + p.role + ' ' + p.structure + (p.statut !== 'Actif' ? ' (' + p.statut + ')' : ''));
+        }
+
+        log('3. Dossiers fictifs (cas C1 à C6 et volume)…');
+        const db = Object.assign(Object.create(Store.Supa), { client: c });
+        const fait = await Seed.seed(db);
+        log(fait ? '   Données chargées.' : '   Des dossiers existent déjà : chargement ignoré (utiliser « Vider les dossiers » au préalable).');
+        log('\nTerminé. Renseigner dans web/assets/js/config.js : supabaseUrl, supabaseAnonKey (clé publique) et motDePasseDemo.');
+      } catch (e) { log('ERREUR : ' + (e.message || JSON.stringify(e))); }
+    };
+
+    document.getElementById('purge').onclick = async () => {
+      if (!confirm('Supprimer tous les dossiers, référencements, alertes, doublons et le journal ?')) return;
+      try {
+        const c = client(); const zero = '00000000-0000-0000-0000-000000000000';
+        for (const t of ['referencements', 'alertes', 'doublons', 'audit', 'dossiers']) ok(await c.from(t).delete().neq('id', zero));
+        ok(await c.from('compteur').delete().gte('annee', 0));
+        log('Base vidée.');
+      } catch (e) { log('ERREUR : ' + (e.message || JSON.stringify(e))); }
+    };
+  </script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+# macOS
+.DS_Store
+._*
+
+# Historique de session local (plugin remember)
+.remember/
+
+# Environnements et secrets locaux
+.env
+.env.*
+*.local
