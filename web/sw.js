@@ -5,7 +5,7 @@
    La VERSION est dérivée du contenu des fichiers (empreinte SHA-256). Modifier un seul fichier
    change le nom du cache, ce qui force une vraie mise à jour : c'est ce qui évite de servir
    indéfiniment un ancien script, le défaut classique des applications mises en cache. */
-const VERSION = 'r360-578a5efa6aa0';
+const VERSION = 'r360-2174267c6569';
 const SHELL = [
   "./",
   "./index.html",

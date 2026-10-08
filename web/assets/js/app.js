@@ -291,6 +291,29 @@
      Le service worker pré-charge tout le nécessaire. Son nom de cache dérive du contenu des
      fichiers : dès qu'un fichier change, une nouvelle version s'installe et prévient la page.
      On ne recharge jamais dans le dos de l'agent — un entretien en cours serait perdu. */
+  /* Installation de l'application. Le navigateur ne propose l'installation qu'une fois ses
+     critères réunis (manifeste, service worker, HTTPS) et émet alors `beforeinstallprompt`.
+     On intercepte cet événement pour déclencher l'invite depuis NOS paramètres plutôt que
+     de laisser l'utilisateur chercher une icône dans la barre d'adresse.
+     iOS ne connaît pas cet événement : l'écran des paramètres bascule sur une marche à suivre. */
+  App.invite = null;
+  App.installee = () => window.matchMedia('(display-mode: standalone)').matches
+    || window.matchMedia('(display-mode: window-controls-overlay)').matches
+    || window.navigator.standalone === true;
+  App.iOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); App.invite = e; document.dispatchEvent(new CustomEvent('r360-install')); });
+  window.addEventListener('appinstalled', () => { App.invite = null; document.dispatchEvent(new CustomEvent('r360-install')); UI.toast('Application installée sur cet appareil.', 'check-circle-2'); });
+
+  App.installerApp = async function () {
+    if (!App.invite) return 'indisponible';
+    const e = App.invite; App.invite = null;
+    e.prompt();
+    const r = await e.userChoice.catch(() => ({ outcome: 'dismissed' }));
+    document.dispatchEvent(new CustomEvent('r360-install'));
+    return r.outcome;              // 'accepted' ou 'dismissed'
+  };
+
   App.installerSW = function () {
     if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
     navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Service worker non enregistré :', e.message));

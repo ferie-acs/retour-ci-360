@@ -132,13 +132,61 @@
         h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Fond de carte'), h('span', null, 'OpenStreetMap (rendu OSM France), secours hors connexion : contours Natural Earth'))))));
   };
 
+  /* ---------- Installation sur l'appareil ----------
+     Un bouton dans les paramètres, plutôt qu'une icône à trouver dans la barre d'adresse.
+     Trois états : déjà installée, installable en un clic, ou marche à suivre manuelle
+     (iOS, qui n'expose pas `beforeinstallprompt`). */
+  R.installation = function () {
+    const zone = h('div');
+    const marcheASuivre = () => {
+      const pas = App.iOS()
+        ? [['share', 'Toucher le bouton Partager, en bas de Safari'], ['plus-square', 'Choisir « Sur l\'écran d\'accueil »'], ['check', 'Confirmer : l\'application apparaît avec les autres']]
+        : [['menu', 'Ouvrir le menu du navigateur (⋮ ou ···)'], ['download', 'Choisir « Installer » ou « Ajouter à l\'écran d\'accueil »'], ['check', 'Confirmer : l\'application s\'ouvre dans sa propre fenêtre']];
+      UI.modal({ title: 'Installer sur cet appareil', icon: 'download',
+        body: h('div', { class: 'stack' },
+          h('div', { class: 'notice' }, icon('info'), App.iOS()
+            ? 'Sur iPhone et iPad, l\'installation passe obligatoirement par Safari : les autres navigateurs n\'y ont pas accès.'
+            : 'Ce navigateur ne propose pas l\'installation automatique. La marche à suivre reste simple.'),
+          h('div', { class: 'stack' }, pas.map(([ic, t], i) => h('div', { class: 'row', style: { gap: '10px' } },
+            h('span', { class: 'ticon o' }, icon(ic)), h('span', null, h('b', null, (i + 1) + '. '), t))))),
+        actions: [{ label: 'Fermer' }] });
+    };
+    const peindre = () => {
+      const installee = App.installee();
+      const possible = !!App.invite;
+      zone.replaceChildren(carteC('download', possible ? 'o' : installee ? 'g' : 'b', 'Installer l\'application', null,
+        h('div', { class: 'card-b' },
+          h('div', { class: 'param-row' },
+            h('span', { class: 'ticon ' + (installee ? 'g' : 'o') }, icon(installee ? 'check-circle-2' : 'download')),
+            h('div', { class: 'grow' },
+              h('b', null, installee ? 'Application installée' : 'Application non installée'),
+              h('div', { class: 'small muted' }, installee
+                ? 'Elle s\'ouvre depuis l\'écran d\'accueil, en plein écran, et démarre sans réseau.'
+                : 'Une fois installée, elle s\'ouvre comme une application : icône sur l\'écran d\'accueil, plein écran, et démarrage sans réseau.')),
+            installee ? h('span', { class: 'badge ok' }, icon('check'), 'En place')
+              : possible ? h('button', { class: 'btn primary', onclick: async () => {
+                const r = await App.installerApp();
+                if (r === 'dismissed') UI.toast('Installation annulée.', 'info');
+                if (r === 'indisponible') marcheASuivre();
+              } }, icon('download'), 'Installer')
+                : h('button', { class: 'btn', onclick: marcheASuivre }, icon('list-checks'), 'Comment installer')),
+          installee || possible ? null : h('div', { class: 'small muted', style: { padding: '0 0 4px' } },
+            App.iOS() ? 'Sur iPhone et iPad, l\'installation se fait à la main depuis Safari.'
+              : 'Le bouton d\'installation directe apparaîtra dès que le navigateur l\'autorisera (site servi en HTTPS, application non déjà installée).'))));
+      UI.refreshIcons();
+    };
+    document.addEventListener('r360-install', peindre);
+    peindre();
+    return zone;
+  };
+
   /* ---------- Appareil ---------- */
   R.appareil = function (z, p) {
     const ua = navigator.userAgent; const tactile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     const lignes = [['Type d\'appareil', p.tablette ? 'Tablette de terrain ' + p.tablette : tactile ? 'Écran tactile' : 'Ordinateur'], ['Navigateur', ua], ['Système', navigator.platform || '—'], ['Langue', navigator.language], ['Fuseau horaire', Intl.DateTimeFormat().resolvedOptions().timeZone],
       ['Écran', screen.width + ' × ' + screen.height + ' px (densité ' + (window.devicePixelRatio || 1) + ')'], ['Fenêtre', innerWidth + ' × ' + innerHeight + ' px'], ['Écran tactile', tactile ? 'Oui' : 'Non'],
       ['Version du jeu de données', Store.LS.get('r360.version', '—')], ['Bibliothèques embarquées', ['Leaflet', 'jsPDF', 'SheetJS', 'html-to-image', 'qrcode-generator', 'Lucide'].filter((x, i) => [window.L, window.jspdf, window.XLSX, window.htmlToImage, window.qrcode, window.lucide][i]).join(', ')]];
-    z.append(carteC('monitor-smartphone', 'v', 'Informations sur l\'appareil', h('button', { class: 'btn sm', onclick: () => { navigator.clipboard && navigator.clipboard.writeText(lignes.map((l) => l.join(' : ')).join('\n')); UI.toast('Informations copiées (utile pour le support).', 'clipboard-check'); } }, icon('clipboard'), 'Copier pour le support'),
+    z.append(R.installation(), carteC('monitor-smartphone', 'v', 'Informations sur l\'appareil', h('button', { class: 'btn sm', onclick: () => { navigator.clipboard && navigator.clipboard.writeText(lignes.map((l) => l.join(' : ')).join('\n')); UI.toast('Informations copiées (utile pour le support).', 'clipboard-check'); } }, icon('clipboard'), 'Copier pour le support'),
       h('div', { class: 'card-b' }, lignes.map(([k, v]) => h('div', { class: 'kv' }, h('span', { class: 'k' }, k), h('span', { class: 'small' }, v))))));
   };
 
