@@ -134,5 +134,49 @@
     if (r === 'documents') return ['RES-014', 'RES-015', 'RES-016', 'RES-017', 'RES-018'].includes(code);
     return true;
   };
+  /* ---------- Parcours du dossier entre structures ----------
+     Le dossier traverse cinq phases, chacune tenue par une structure différente. La phase
+     courante n'est pas stockée : elle se DÉDUIT de l'état réel (relais en attente, sections
+     renseignées, référencements, suivis). Un champ stocké se désynchroniserait du reste. */
+  D.PHASES = [
+    { id: 'identification', n: 1, label: 'Identification', court: 'Identification',
+      desc: 'État civil, pièce d\'identité et biométrie. Sections I à V.',
+      sections: ['I', 'II', 'III', 'IV', 'V'], porteurs: ['ONECI', 'DGIE'], ic: 'id-card', ton: 'v' },
+    { id: 'enregistrement', n: 2, label: 'Enregistrement', court: 'Enregistrement',
+      desc: 'Entretien complet : parcours migratoire, vulnérabilités, besoins. Sections VI à XIII.',
+      sections: ['VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII'], porteurs: ['DGIE', 'OIM'], ic: 'clipboard-list', ton: 'o' },
+    { id: 'orientation', n: 3, label: 'Orientation', court: 'Orientation',
+      desc: 'Analyse du dossier et référencement vers les structures de service. Section XIV.',
+      sections: ['XIV'], porteurs: ['DGIE'], ic: 'send', ton: 'b' },
+    { id: 'prise_en_charge', n: 4, label: 'Prise en charge', court: 'Prise en charge',
+      desc: 'Service rendu par la structure référencée : protection, santé, insertion.',
+      sections: [], porteurs: [], ic: 'heart-handshake', ton: 'g' },
+    { id: 'suivi', n: 5, label: 'Suivi et clôture', court: 'Suivi',
+      desc: 'Échéances de suivi puis clôture du dossier. Section XV.',
+      sections: ['XV'], porteurs: [], ic: 'flag', ton: 't' },
+  ];
+  D.phase = (id) => D.PHASES.find((x) => x.id === id) || D.PHASES[0];
+
+  /* Phase courante d'un dossier + qui en a la charge. `ctx` apporte ce que le dossier ne
+     contient pas : relais en attente, référencements le concernant. */
+  D.etape = function (d, ctx) {
+    const c = ctx || {}; const refs = (c.refs || []).filter((r) => r.dossier_id === d.id);
+    const relais = (c.relais || []).find((r) => r.id === d.id && r.statut === 'En attente');
+    if (relais) return { phase: D.phase(relais.sections && relais.sections.length > 4 ? 'enregistrement' : 'identification'),
+      chez: relais.vers, depuis: relais.created_at || relais.date, attente: true, de: relais.de };
+    if (d.statut === 'Brouillon' || d.statut === 'Prêt à synchroniser') {
+      const faites = D.PHASES[0].sections.filter((x) => (d.sections_faites || []).includes(x)).length;
+      return { phase: D.phase(faites >= 4 ? 'enregistrement' : 'identification'), chez: d.structure, depuis: d.created_at };
+    }
+    if ((d.etat_suivi || 'Ouvert') === 'Clôturé') return { phase: D.phase('suivi'), chez: d.structure_responsable || d.structure, depuis: d.updated_at, fini: true };
+    const actifs = refs.filter((r) => ['Accepté', 'En cours de prise en charge'].includes(r.statut));
+    if (actifs.length) return { phase: D.phase('prise_en_charge'), chez: actifs[0].destinataire, depuis: actifs[0].created_at };
+    const emis = refs.filter((r) => ['Émis', 'Reçu'].includes(r.statut));
+    if (emis.length) return { phase: D.phase('orientation'), chez: emis[0].destinataire, depuis: emis[0].created_at, attente: true, de: emis[0].emetteur };
+    /* Plus aucun référencement en attente ni en cours : le dossier est enregistré et suivi.
+       Le renvoyer en « Orientation » gonflerait la colonne de dossiers qui n'attendent rien. */
+    return { phase: D.phase('suivi'), chez: d.structure_responsable || d.structure, depuis: d.updated_at || d.synced_at || d.created_at };
+  };
+
   window.Domaine = D;
 })();

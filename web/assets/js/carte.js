@@ -63,6 +63,9 @@
 
   /* Trace animée : le tracé se dessine progressivement, puis les étapes apparaissent l'une après l'autre */
   function trace(groupe, etapes, duree = 900) {
+    /* Garde-fou : un groupe reçoit UN seul tracé. Sans cela, deux appels successifs
+       empileraient leurs numéros d'étape dans le même calque. */
+    groupe.clearLayers();
     const pts = chemin(etapes);
     const halo = L.polyline(pts, { color: '#FE7701', weight: 9, opacity: 0.22, lineCap: 'round' }).addTo(groupe);
     const ligne = L.polyline(pts, { color: '#FE7701', weight: 4, opacity: 1, lineCap: 'round', className: 'trace-plein' }).addTo(groupe);
@@ -94,6 +97,12 @@
       el._premier = true;
       suivreTaille(el, map);
     }
+    /* Changer de dossier avant la fin du vol de caméra laissait un « moveend » en attente.
+       Quand il se déclenchait, il traçait l'ANCIEN itinéraire dans le NOUVEAU calque : deux
+       parcours superposés, et donc des numéros d'étape en double sur la carte. */
+    if (el._dessiner) { map.off('moveend', el._dessiner); el._dessiner = null; }
+    if (el._garde) { clearTimeout(el._garde); el._garde = null; }
+
     el._flux.eachLayer((l) => l.setStyle({ opacity: etapes ? 0.22 : 0.4 }));
     // Ancienne trace : fondu de sortie, puis remplacement
     const ancien = el._hl; el._hl = L.layerGroup().addTo(map);
@@ -104,15 +113,20 @@
     const pts = etapes && etapes.length ? chemin(etapes) : [];
     const cadre = cadrage === 'afrique' ? L.latLngBounds(AFRIQUE) : L.latLngBounds(pts.length && cadrage === 'trajet' ? pts : tout.concat(pts)).pad(0.12);
     el._cadre = cadre;
-    const dessiner = () => { if (etapes && etapes.length) trace(el._hl, etapes); };
+    const dessiner = () => { el._dessiner = null; if (etapes && etapes.length) trace(el._hl, etapes); };
     if (el._premier) {
       el._premier = false;
       setTimeout(() => { map.invalidateSize(); map.fitBounds(cadre, { padding: [16, 16], animate: false }); dessiner(); }, 60);
     } else {
+      el._dessiner = dessiner;
       map.once('moveend', dessiner);
       map.flyToBounds(cadre, { padding: [16, 16], duration: 0.9, easeLinearity: 0.3 });
       // si la vue ne bouge pas, « moveend » peut ne pas se produire : garde-fou
-      setTimeout(() => { if (!el._hl.getLayers().length) { map.off('moveend', dessiner); dessiner(); } }, 1100);
+      el._garde = setTimeout(() => {
+        if (el._dessiner !== dessiner) return;          // un dossier plus récent a pris la main
+        if (el._hl.getLayers().length) { el._dessiner = null; return; }
+        map.off('moveend', dessiner); dessiner();
+      }, 1100);
     }
     void conteneur;
     return map;

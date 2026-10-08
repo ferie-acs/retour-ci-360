@@ -2,10 +2,17 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Retour CI 360 — Démonstration</title>
   <link rel="icon" type="image/png" href="assets/img/favicon.png">
-  <meta name="theme-color" content="#014A96">
+  <meta name="theme-color" content="#014A96" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0E151D" media="(prefers-color-scheme: dark)">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="assets/img/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Retour CI 360">
+  <meta name="mobile-web-app-capable" content="yes">
   <script>/* Thème appliqué avant l'affichage pour éviter un éclair blanc */ try { var t = JSON.parse(localStorage.getItem("r360.theme")); document.documentElement.dataset.theme = t || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); document.documentElement.dataset.texte = JSON.parse(localStorage.getItem("r360.texte")) || "normal"; document.documentElement.dataset.calme = JSON.parse(localStorage.getItem("r360.calme")) ? "1" : ""; } catch (e) { document.documentElement.dataset.theme = "light"; }</script>
   <link rel="stylesheet" href="assets/vendor/leaflet.css">
   <link rel="stylesheet" href="assets/css/app.css">
@@ -43,6 +50,7 @@
   <script src="assets/js/documents.js"></script>
   <script src="assets/js/qualite.js"></script>
   <script src="assets/js/annonces.js"></script>
+  <script src="assets/js/pipeline.js"></script>
   <script src="assets/js/pilotage.js"></script>
   <script src="assets/js/reglages.js"></script>
   <script src="assets/js/app.js"></script>

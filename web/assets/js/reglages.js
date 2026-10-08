@@ -51,7 +51,7 @@
         ligneReglage('panel-left-close', 'Menu latéral réduit', 'N\'affiche que les icônes dans la barre latérale.', sw(document.body.classList.contains('mini'), (v) => { document.body.classList.toggle('mini', v); Store.LS.set('r360.mini', v); })),
         ligneReglage('wind', 'Animations réduites', 'Supprime les transitions et animations (cartes, listes).', sw(Store.LS.get('r360.calme', false), (v) => { Store.LS.set('r360.calme', v); document.documentElement.dataset.calme = v ? '1' : ''; }))),
       carteC('user-round', 'b', 'Mon profil', null, h('div', { class: 'card-b' },
-        h('div', { class: 'who', style: { marginBottom: '14px' } }, Admin.logo(p.structure, 44), h('div', null, h('b', { style: { fontSize: '16px' } }, p.nom), h('div', { class: 'small muted' }, p.roleLabel + ' — ' + p.structure))),
+        h('div', { class: 'who', style: { marginBottom: '14px' } }, Admin.logo(p.structure, 44), h('div', null, h('b', { style: { fontSize: 'var(--t-lg)' } }, p.nom), h('div', { class: 'small muted' }, p.roleLabel + ' — ' + p.structure))),
         h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Structure'), h('span', null, (M.structures.find((s) => s.code === p.structure) || {}).nom || p.structure)),
         p.site ? h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Site'), h('span', null, p.site)) : null,
         p.tablette ? h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Tablette'), h('span', null, p.tablette)) : null,
@@ -66,7 +66,7 @@
     let persistant = null; try { persistant = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null; } catch (e) { persistant = null; }
     const QUOTA_LS = 5 * 1024 * 1024; const pct = Math.min(100, Math.round((100 * total) / QUOTA_LS));
     const tab = p.tablette ? Store.Tablette.list(p.tablette) : [];
-    const kc = (t, ic, l, v, sous) => h('div', { class: 'kcard ' + t }, h('span', { class: 'ki' }, icon(ic)), h('div', null, h('div', { class: 'kl' }, l), h('div', { class: 'kv' }, v), sous ? h('div', { class: 'tiny', style: { opacity: 0.9 } }, sous) : null));
+    const kc = (t, ic, l, v, sous) => h('div', { class: 'kcard ' + t }, h('span', { class: 'ki' }, icon(ic)), h('div', null, h('div', { class: 'kl' }, l), h('div', { class: 'kv' }, v), sous ? h('div', { class: 'tiny', style: { opacity: 0.9 } }, sous) : null), UI.filigrane(ic));
     z.append(h('div', { class: 'grid g4', style: { marginBottom: '20px' } },
       kc('o', 'hard-drive', 'Stockage local utilisé', octets(total), pct + ' % de la limite indicative de 5 Mo'),
       kc('d', 'key-round', 'Clés enregistrées', inv.length, [...new Set(inv.map((x) => x.groupe))].length + ' catégories'),

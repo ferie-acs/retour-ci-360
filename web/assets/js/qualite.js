@@ -2,7 +2,7 @@
 (function () {
   const { h, icon } = UI; const M = window.METIER;
   const Q = {};
-  const kcard = (t, ic, label, val) => h('div', { class: 'kcard ' + t }, h('span', { class: 'ki' }, icon(ic)), h('div', null, h('div', { class: 'kl' }, label), h('div', { class: 'kv' }, val)));
+  const kcard = (t, ic, label, val) => h('div', { class: 'kcard ' + t }, h('span', { class: 'ki' }, icon(ic)), h('div', null, h('div', { class: 'kl' }, label), h('div', { class: 'kv' }, val)), UI.filigrane(ic));
   const carteC = (ic, t, titre, droite, ...corps) => h('div', { class: 'card p0' }, h('div', { class: 'card-h' }, h('h3', { class: 'title' }, h('span', { class: 'ticon ' + t }, icon(ic)), titre), droite || null), ...corps);
   const pc = (n, d) => (d ? Math.round((100 * n) / d) : 0);
   const vide = (v) => v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length);
@@ -57,8 +57,8 @@
       h('tbody', null, parS.map((x) => h('tr', null, h('td', null, h('div', { class: 'who' }, Admin.logo(x.s, 28), h('b', null, x.s))), h('td', null, x.n), cell(x.comp), cell(x.arr), cell(x.tel), cell(x.it), h('td', null, x.an ? h('span', { class: 'badge solid danger' }, x.an) : h('span', { class: 'badge solid ok' }, '0')), h('td', { class: 'small' }, x.sync + ' h'))))));
     const lignesS = () => [['Structure', 'Dossiers', 'Complétude (%)', 'Arrivée rattachée (%)', 'Téléphone (%)', 'Itinéraire (%)', 'Dossiers avec incohérence', 'Synchronisation moyenne (h)'], ...parS.map((x) => [x.s, x.n, x.comp, x.arr, x.tel, x.it, x.an, x.sync])];
     c.append(h('div', { class: 'grid g-2-1', style: { marginBottom: '20px' } },
-      carteC('building-2', 'b', 'Qualité par structure d\'enrôlement', Export.menu({ compact: true, titre: 'Qualité des données par structure', lignes: lignesS, noeud: () => tblS, pdfImage: false, fichier: 'qualite_structures' }), tblS),
-      carteC('list-checks', 'g', 'Renseignement des champs clés', Export.menu({ compact: true, titre: 'Renseignement des champs clés', lignes: () => [['Champ', 'Taux (%)', 'Détail'], ...itemsC.map((x) => [x.label, x.v, x.sous])], noeud: () => blocC, fichier: 'qualite_champs' }), blocC)));
+      carteC('building-2', 'b', ['Qualité par structure d\'enrôlement', UI.aide('Pour chaque structure ayant mené des entretiens : nombre de dossiers, complétude moyenne du formulaire, part de dossiers rattachés à une arrivée, téléphone et itinéraire renseignés, dossiers présentant une incohérence bloquante, et délai moyen entre la fin de l\'entretien et la synchronisation.')], Export.menu({ compact: true, titre: 'Qualité des données par structure', lignes: lignesS, noeud: () => tblS, pdfImage: false, fichier: 'qualite_structures' }), tblS),
+      carteC('list-checks', 'g', ['Renseignement des champs clés', UI.aide('Part des dossiers où chaque champ clé est renseigné, en pourcentage du total des dossiers accessibles. Barre verte au-dessus de 90 %, orange entre 60 et 90 %, rouge en dessous de 60 %.')], Export.menu({ compact: true, titre: 'Renseignement des champs clés', lignes: () => [['Champ', 'Taux (%)', 'Détail'], ...itemsC.map((x) => [x.label, x.v, x.sous])], noeud: () => blocC, fichier: 'qualite_champs' }), blocC)));
 
     // anomalies
     const an = lignesD.flatMap((x) => x.an.map((a) => ({ d: x.d, type: a[0], txt: a[1], niv: a[2] })));
@@ -169,16 +169,16 @@
     const prov = compte((d) => d.resume.provenance); const reg = compte((d) => d.resume.region_retour); const typ = compte((d) => d.reponses['IDT-017'] === 'Charter' ? 'Vol affrété' : d.reponses['IDT-017'] === 'voie terrestre' ? 'Voie terrestre' : d.reponses['IDT-017']);
     const parM = compte((d) => S.mois(d)); const mois = Object.keys(parM).sort();
     const pyr = { h: S.TRANCHES.map((tr) => ds.filter((d) => S.tranche(d.resume.age) === tr && d.resume.sexe === 'Homme').length), f: S.TRANCHES.map((tr) => ds.filter((d) => S.tranche(d.resume.age) === tr && d.resume.sexe === 'Femme').length) };
-    const masqueItems = (it) => it.filter((x) => x.v >= SEUIL).concat(it.some((x) => x.v < SEUIL) ? [{ label: 'Autres (effectifs < ' + SEUIL + ')', v: it.filter((x) => x.v < SEUIL).reduce((a, x) => a + x.v, 0), pct: pc(it.filter((x) => x.v < SEUIL).reduce((a, x) => a + x.v, 0), n), couleur: '#8A939C' }] : []);
-    const kpi = (ic, t, v, l) => h('div', { class: 'card itile' }, h('span', { class: 'ticon lg ' + t }, icon(ic)), h('div', null, h('div', { class: 'v' }, v), h('div', { class: 'l' }, l)));
+    const masqueItems = (it) => it.filter((x) => x.v >= SEUIL).concat(it.some((x) => x.v < SEUIL) ? [{ label: 'Autres (effectifs < ' + SEUIL + ')', v: it.filter((x) => x.v < SEUIL).reduce((a, x) => a + x.v, 0), pct: pc(it.filter((x) => x.v < SEUIL).reduce((a, x) => a + x.v, 0), n), couleur: '#C8CFD6' }] : []);
+    const kpi = (ic, t, v, l) => h('div', { class: 'card itile' }, h('span', { class: 'ticon lg ' + t }, icon(ic)), h('div', null, h('div', { class: 'v' }, v), h('div', { class: 'l' }, l)), UI.filigrane(ic));
     page.append(h('div', { class: 'od-kpis' }, kpi('users', 'o', n.toLocaleString('fr-FR'), 'migrants de retour enregistrés'), kpi('venus', 'p', pc(fem, n) + ' %', 'de femmes'), kpi('baby', 'b', pc(min, n) + ' %', 'de mineurs'),
       kpi('hand-helping', 'g', pc(rva, n) + ' %', 'de retours volontaires assistés'), kpi('plane-landing', 'v', arrs.filter((a) => a.statut !== 'Prévue').length, 'arrivées accueillies'), kpi('globe', 't', Object.keys(prov).length, 'pays de provenance')));
     const carte = (ic, t, titre, corps) => carteC(ic, t, titre, null, h('div', { class: 'card-b' }, corps));
     page.append(h('div', { class: 'grid g2', style: { marginBottom: '20px' } },
-      carte('trending-up', 'o', 'Retours par mois', Charts.courbes({ etiquettes: mois.map(S.libMois), series: [{ nom: 'Retours', couleur: '#FE7701', valeurs: mois.map((m) => parM[m]) }], hauteur: 280, largeur: 560 })),
-      carte('users', 'b', 'Pyramide des âges', Charts.pyramide({ tranches: S.TRANCHES, hommes: pyr.h.map((v) => (v < SEUIL ? 0 : v)), femmes: pyr.f.map((v) => (v < SEUIL ? 0 : v)), largeur: 520 })),
-      carte('globe', 'v', 'Pays de provenance', Charts.hbarres({ items: masqueItems(items(prov)), couleur: '#014A96', largeur: 560 })),
-      carte('map-pin', 't', 'Régions de retour', Charts.hbarres({ items: masqueItems(items(reg)), couleur: '#0E9384', largeur: 560 }))));
+      carte('trending-up', 'o', ['Retours par mois', UI.aide('Nombre de migrants de retour enregistrés chaque mois, d\'après la date de l\'entretien. Agrégat public : les effectifs inférieurs à ' + SEUIL + ' ne sont pas publiés.')], Charts.courbes({ etiquettes: mois.map(S.libMois), series: [{ nom: 'Retours', couleur: '#FE7701', valeurs: mois.map((m) => parM[m]) }], hauteur: 280, largeur: 560 })),
+      carte('users', 'b', ['Pyramide des âges', UI.aide('Répartition des migrants de retour par tranche d\'âge et par sexe — hommes à gauche en bleu, femmes à droite en orange. Toute tranche comptant moins de ' + SEUIL + ' personnes est ramenée à zéro pour empêcher une réidentification.')], Charts.pyramide({ tranches: S.TRANCHES, hommes: pyr.h.map((v) => (v < SEUIL ? 0 : v)), femmes: pyr.f.map((v) => (v < SEUIL ? 0 : v)), largeur: 520 })),
+      carte('globe', 'v', ['Pays de provenance', UI.aide('Pays d\'où les migrants sont revenus, classés par effectif. Les pays comptant moins de ' + SEUIL + ' personnes sont regroupés dans une ligne « Autres » au lieu d\'être nommés.')], Charts.hbarres({ items: masqueItems(items(prov)), couleur: '#014A96', largeur: 560 })),
+      carte('map-pin', 't', ['Régions de retour', UI.aide('Régions de Côte d\'Ivoire où les migrants se sont réinstallés, classées par effectif. Les régions comptant moins de ' + SEUIL + ' personnes sont regroupées dans une ligne « Autres ».')], Charts.hbarres({ items: masqueItems(items(reg)), couleur: '#0E6B63', largeur: 560 }))));
     // jeux de données téléchargeables
     const jeux = [
       ['Retours par mois et par sexe', 'retours_mois_sexe', () => [['Mois', 'Hommes', 'Femmes', 'Total'], ...mois.map((m) => { const x = ds.filter((d) => S.mois(d) === m); const hh = x.filter((d) => d.resume.sexe === 'Homme').length, ff = x.filter((d) => d.resume.sexe === 'Femme').length; return [m, msk(hh), msk(ff), msk(x.length)]; })]],

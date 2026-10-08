@@ -66,7 +66,7 @@
     const p = App.profil; const tout = T.calculer(p, data); const now = Date.now();
     const CATS = [['toutes', 'Toutes', 'list-checks'], ['referencements', 'Référencements', 'send'], ['alertes', 'Alertes', 'siren'], ['transferts', 'Transferts', 'arrow-right-left'], ['validations', 'Validations', 'stamp'], ['suivis', 'Suivis', 'calendar-check']];
     const n = (k) => (k === 'toutes' ? tout.length : tout.filter((x) => x.cat === k).length);
-    const kcard = (t, ic, label, val) => h('div', { class: 'kcard ' + t }, h('span', { class: 'ki' }, icon(ic)), h('div', null, h('div', { class: 'kl' }, label), h('div', { class: 'kv' }, val)));
+    const kcard = (t, ic, label, val) => h('div', { class: 'kcard ' + t }, h('span', { class: 'ki' }, icon(ic)), h('div', null, h('div', { class: 'kl' }, label), h('div', { class: 'kv' }, val)), UI.filigrane(ic));
     const list = h('div'); const tabs = h('div', { class: 'tabs', style: { margin: '0 0 0', padding: '0 12px' } });
     const paintTabs = () => { tabs.innerHTML = ''; CATS.forEach(([k, l, ic]) => tabs.append(h('button', { class: k === T.filtre ? 'on' : '', onclick: () => { T.filtre = k; paintTabs(); paint(); } }, icon(ic), l, h('span', { class: 'badge ' + (k === T.filtre ? 'accent' : 'grey') }, n(k))))); UI.refreshIcons(); };
     const paint = () => {

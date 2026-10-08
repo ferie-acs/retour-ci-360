@@ -11,6 +11,7 @@
   const PROFILS = [
     { id: 'agent-dgie', nom: 'Awa Koné', role: 'agent', roleLabel: 'Agent enquêteur', structure: 'DGIE', site: 'Aéroport FHB, Abidjan', espace: 'agent', tablette: 'TAB-DGIE-01' },
     { id: 'agent-oim', nom: 'Jean-Marc Yao', role: 'agent', roleLabel: 'Agent enquêteur', structure: 'OIM', site: 'Bureau OIM, Abidjan', espace: 'agent', tablette: 'TAB-OIM-03' },
+    { id: 'agent-oneci', nom: 'Adjoua Kouassi', role: 'agent', roleLabel: 'Agent enquêteur', structure: 'ONECI', site: 'Aéroport FHB, Abidjan', espace: 'agent', tablette: 'TAB-ONECI-02' },
     { id: 'sup-dgie', nom: 'Mariam Touré', role: 'superviseur', roleLabel: 'Superviseure', structure: 'DGIE', site: 'Abidjan', espace: 'portail' },
     { id: 'admin', nom: 'Administration générale', role: 'admin', roleLabel: 'Administrateur général', structure: 'DGIE', site: 'Abidjan', espace: 'portail' },
     { id: 'gc-ej', nom: 'Koffi Brou', role: 'gestionnaire', roleLabel: 'Gestionnaire de cas', structure: 'EJ', espace: 'portail' },

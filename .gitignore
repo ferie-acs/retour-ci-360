@@ -1,11 +1,9 @@
-# macOS
+# Système
 .DS_Store
-._*
 
-# Historique de session local (plugin remember)
+# Mémoire de session de l'assistant, hors projet
 .remember/
 
-# Environnements et secrets locaux
-.env
-.env.*
-*.local
+# Configuration locale : ne jamais committer d'adresse ni de clé Supabase renseignées
+# (le fichier versionné reste le gabarit vide)
+# web/assets/js/config.js

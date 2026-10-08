@@ -22,7 +22,7 @@
     const tous = ds;
     if (App.recherche) ds = ds.filter((d) => UI.norm([d.identifiant, d.identifiantProvisoire, d.resume && d.resume.nom, d.resume && d.resume.prenoms].join(' ')).includes(UI.norm(App.recherche)));
     const n = (st) => tous.filter((d) => d.statut === st).length;
-    const kcard = (t, ic, label, val) => h('div', { class: 'kcard ' + t }, h('span', { class: 'ki' }, icon(ic)), h('div', null, h('div', { class: 'kl' }, label), h('div', { class: 'kv' }, val)));
+    const kcard = (t, ic, label, val) => h('div', { class: 'kcard ' + t }, h('span', { class: 'ki' }, icon(ic)), h('div', null, h('div', { class: 'kl' }, label), h('div', { class: 'kv' }, val)), UI.filigrane(ic));
     const AVT = ['b', 'o', 'g', 'v', 'p', 't'];
     root.append(h('div', { class: 'page' },
       h('div', { class: 'page-head' }, h('div', null, h('h1', null, 'Bienvenue, ' + p.nom), h('p', { class: 'sub' }, `${p.roleLabel} — ${p.structure}, ${p.site} · tablette ${p.tablette}`)),
@@ -101,10 +101,14 @@
     let cur = sectParam && SECT_ORDER.includes(sectParam) ? sectParam : (d._derniere || 'I');
     if (!consentOk(d) && cur !== 'I') cur = 'I';
     const stepsEl = h('div', { class: 'card steps' }); const body = h('div');
+    /* Le rail est horizontal sous 1100 px. On interroge le point de rupture directement :
+       `flex-direction` vaut « row » même sur un bloc, et donnerait un faux positif. */
+    const railHorizontal = () => window.matchMedia('(max-width: 1100px)').matches;
     const ctx = {
       refreshers: [], onChangeHooks: [],
       save(quiet) { derive(); d.updated_at = new Date().toISOString(); Store.Tablette.save(p.tablette, d); if (!quiet) paintSteps(); },
-      changed(code, val, quiet) {
+      changed(code, val, quiet, avant) {
+        noterCorrection(code, avant, val);
         Domaine.calculs(d, p);
         ctx.onChangeHooks.forEach((f) => f(code));
         ctx.refreshers.forEach((f) => f());
@@ -113,6 +117,25 @@
         ctx.save(quiet);
       },
     };
+    /* Corriger la saisie d'une AUTRE structure ne doit pas se faire en silence : sans trace,
+       la section resterait attribuée à son auteur d'origine alors que la réponse a changé.
+       On enregistre qui a corrigé quoi, et on le rend visible sur la section. */
+    function noterCorrection(code, avant, apres) {
+      if (lecture) return;
+      const q = Domaine.Q[code]; if (!q) return;
+      const c = parSection[q.sect];
+      if (!c || c.structure === p.structure) return;
+      if (JSON.stringify(avant === undefined ? null : avant) === JSON.stringify(apres === undefined ? null : apres)) return;
+      d.corrections = d.corrections || [];
+      const lib = (v) => (v === undefined || v === null || v === '' ? '(vide)' : Array.isArray(v) ? v.join(', ') : String(v));
+      const deja = d.corrections.find((x) => x.code === code);
+      if (deja) { deja.apres = lib(apres); deja.date = new Date().toISOString(); return; }
+      d.corrections.push({ code, section: q.sect, auteur_initial: c.structure, par: p.nom, structure: p.structure,
+        avant: lib(avant), apres: lib(apres), date: new Date().toISOString() });
+      d.historique.push({ date: new Date().toISOString(), par: p.nom, structure: p.structure,
+        action: 'Correction de ' + code + ' (section ' + q.sect + ', saisie par ' + c.structure + ') : « ' + lib(avant) + ' » → « ' + lib(apres) + ' »' });
+    }
+
     function derive() {
       const r = d.reponses;
       if (d.medias.photo || d.medias.documents.length) r['ENT-012'] = [d.medias.photo ? 'Photo' : null, d.medias.documents.length ? d.medias.documents.length + ' page(s) numérisée(s)' : null].filter(Boolean).join(' + '); else delete r['ENT-012'];
@@ -136,16 +159,26 @@
       } else if (deja) d.alertes = d.alertes.filter((x) => x.regle !== code);
     }
     function paintSteps() {
-      stepsEl.innerHTML = '';
-      stepsEl.append(h('div', { class: 'small muted', style: { padding: '4px 10px 8px' } }, 'Sections du formulaire'));
+      stepsEl.replaceChildren();
+      stepsEl.append(h('div', { class: 'steps-titre small muted' }, 'Sections du formulaire'));
       SECT_ORDER.forEach((s, i) => {
         const lock = s !== 'I' && !consentOk(d);
         const miss = A.manquants(d, s).length;
         const touched = codesOf(s).some((c) => d.reponses[c] !== undefined && Domaine.Q[c].widget !== 'auto');
-        stepsEl.append(h('div', { class: 'step' + (s === cur ? ' cur' : '') + (lock ? ' lock' : '') + (touched && !miss ? ' done' : ''), onclick: () => { if (lock) { UI.toast('Consentement éclairé (ENT-009) requis pour poursuivre.', 'lock'); return; } go(s); } },
-          h('span', { class: 'n' }, touched && !miss ? icon('check') : i + 1), h('span', { style: { flex: 1 } }, M.SECTIONS[s]), parSection[s] && parSection[s].structure !== p.structure ? h('span', { class: 'badge info', title: 'Saisie par ' + parSection[s].agent + ' (' + parSection[s].structure + ')' }, parSection[s].structure) : null, lock ? icon('lock') : (touched && miss ? h('span', { class: 'badge warn' }, miss) : null)));
+        const et = h('div', { class: 'step' + (s === cur ? ' cur' : '') + (lock ? ' lock' : '') + (touched && !miss ? ' done' : ''), onclick: () => { if (lock) { UI.toast('Consentement éclairé (ENT-009) requis pour poursuivre.', 'lock'); return; } go(s); } },
+          h('span', { class: 'n' }, touched && !miss ? icon('check') : i + 1), h('span', { class: 'step-lbl' }, M.SECTIONS[s]),
+          (d.correction_demandee && d.correction_demandee.sections.includes(s)) ? h('span', { class: 'badge warn', title: 'Correction demandée' }, icon('undo-2')) : null,
+          (d.corrections || []).some((x) => x.section === s) ? h('span', { class: 'badge accent', title: 'Corrigée par votre structure' }, icon('pencil')) : null,
+          parSection[s] && parSection[s].structure !== p.structure ? h('span', { class: 'badge info', title: 'Saisie par ' + parSection[s].agent + ' (' + parSection[s].structure + ')' }, parSection[s].structure) : null, lock ? icon('lock') : (touched && miss ? h('span', { class: 'badge warn' }, miss) : null));
+        /* Rail horizontal : la pastille se réduit à son numéro, l'infobulle donne le nom. */
+        UI.infobulle(et, () => h('span', null, s + ' — ' + M.SECTIONS[s]), { clic: false, cote: 'bas', classe: 'tip-nav',
+          actif: () => railHorizontal() && !et.classList.contains('cur') });
+        stepsEl.append(et);
       });
       UI.refreshIcons();
+      /* En rail horizontal (tablette), la section courante doit rester sous les yeux. */
+      const actif = stepsEl.querySelector('.step.cur');
+      if (actif && railHorizontal()) actif.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
     }
     function go(s) {
       if (cur === 'II' && s !== 'II') verifierDoublons();
@@ -184,7 +217,14 @@
       const next = idx < SECT_ORDER.length - 1
         ? h('button', { class: 'btn primary', onclick: () => { if (!consentOk(d)) { UI.toast('Consentement éclairé (ENT-009) requis.', 'lock'); return; } go(SECT_ORDER[idx + 1]); } }, 'Suivant', icon('arrow-right'))
         : (lecture ? h('span') : h('button', { class: 'btn accent', onclick: cloturer }, icon('check-circle-2'), 'Clôturer l\'entretien'));
-      body.append(card, h('div', { class: 'wizard-foot' }, prev, next));
+      /* Le pied devient une barre collante sur tablette : avancer ne doit pas obliger
+         à faire défiler 19 questions jusqu'en bas. Il annonce aussi ce qui manque ici. */
+      const reste = A.manquants(d, cur).length;
+      const etat = h('div', { class: 'wf-etat' },
+        h('b', null, 'Section ' + (idx + 1) + ' sur ' + SECT_ORDER.length),
+        reste ? h('span', { class: 'wf-manque' }, icon('circle-alert'), reste + ' obligatoire(s) à remplir')
+          : h('span', { class: 'wf-ok' }, icon('check'), 'Section complète'));
+      body.append(card, h('div', { class: 'wizard-foot' }, prev, etat, next));
       UI.refreshIcons();
     }
     function cloturer() {
@@ -216,11 +256,17 @@
       h('h1', null, (d.resume.nom || d.resume.prenoms) ? `${d.resume.nom} ${d.resume.prenoms}` : 'Nouvel entretien'),
       h('div', { class: 'row', style: { gap: '8px', marginTop: '4px' } }, h('span', { class: 'idlink' }, d.identifiant || d.identifiantProvisoire), h('span', { class: 'badge solid ' + (STATUT_BADGE[d.statut] || '') }, d.statut), d.arrivee_code ? h('span', { class: 'badge info' }, icon('plane-landing'), 'Arrivée ' + d.arrivee_code) : null, (d.alertes || []).length ? h('span', { class: 'badge solid danger' }, (d.alertes || []).length + ' alerte(s)') : null)),
       h('div', { class: 'row' }, lecture && d.statut !== 'Relayé' ? h('button', { class: 'btn primary', onclick: () => Documents.ficheMigrant(d) }, icon('printer'), 'Imprimer la fiche migrant') : null,
+        !lecture && (d.contributions || []).some((c) => c.structure !== p.structure)
+          ? h('button', { class: 'btn', onclick: () => A.renvoyerCorrection(d, p) }, icon('undo-2'), 'Renvoyer pour correction') : null,
         !lecture && d.arrivee_id ? h('button', { class: 'btn', onclick: () => A.passerRelais(d, p) }, icon('arrow-right-left'), 'Passer le relais') : null,
         h('button', { class: 'btn', onclick: () => App.go('#/agent') }, icon('arrow-left'), 'Entretiens')));
-    root.append(h('div', { class: 'page' }, head, netbar(p, () => A.synchroniser(p)),
+    document.body.classList.add('entretien');
+    root.append(h('div', { class: 'page page-entretien' }, head, netbar(p, () => A.synchroniser(p)),
       d.statut === 'Relayé' ? h('div', { class: 'notice', style: { marginBottom: '14px' } }, icon('arrow-right-left'), 'Relais passé à ' + (d.relais_vers || '') + ' : l\'entretien se poursuit sur la tablette d\'un agent de cette structure. Consultation seule.')
         : lecture ? h('div', { class: 'notice ok', style: { marginBottom: '14px' } }, icon('lock'), 'Entretien clôturé : consultation seule. Les compléments se font ensuite sur le portail.') : null,
+      d.correction_demandee ? h('div', { class: 'notice warn', style: { marginBottom: '14px' } }, icon('undo-2'),
+        h('span', null, h('b', null, 'Correction demandée par ' + d.correction_demandee.de), ' — sections '
+          + d.correction_demandee.sections.join(', ') + ' : « ' + d.correction_demandee.motif + ' »')) : null,
       (d.contributions || []).length ? h('div', { class: 'notice', style: { marginBottom: '14px' } }, icon('users'), 'Entretien à plusieurs mains : ' + d.contributions.map((c) => c.structure + ' (' + c.agent + ') sections ' + c.sections.join(', ')).join(' ; ') + '.') : null,
       h('div', { class: 'wizard' }, stepsEl, body)));
     paintSteps(); paintBody();
@@ -284,6 +330,52 @@
       UI.toast('Relais transmis à ' + x.vers + ' : le migrant apparaît dans la file d\'attente.', 'arrow-right-left'); App.go('#/agent');
     } }] }).el.style.maxWidth = '720px';
   };
+  /* ---------- Renvoi pour correction ----------
+     Une structure qui reçoit un dossier peut y trouver une erreur dans ce qu'une autre a saisi.
+     Deux issues possibles, et les deux doivent exister : corriger soi-même (tracé par
+     `noterCorrection`), ou RENVOYER à l'auteur. Le renvoi n'est pas un relais ordinaire :
+     il désigne les sections fautives, exige un motif, et dépose l'agent receveur directement
+     sur la première section à reprendre plutôt qu'à la suite du formulaire. */
+  A.renvoyerCorrection = function (d, p) {
+    if (!Store.Tablette.online(p.tablette)) { UI.toast('Le renvoi nécessite le réseau : le dossier doit repartir vers l\'autre structure.', 'wifi-off'); return; }
+    const autres = (d.contributions || []).filter((c) => c.structure !== p.structure);
+    if (!autres.length) { UI.toast('Aucune section n\'a été saisie par une autre structure.', 'info'); return; }
+    const cible = autres[autres.length - 1];
+    const dispo = [...new Set(autres.flatMap((c) => c.sections))].filter((x) => SECT_ORDER.includes(x)).sort((x, y) => SECT_ORDER.indexOf(x) - SECT_ORDER.indexOf(y));
+    const choisies = new Set();
+    const motif = h('textarea', { class: 'textarea', style: { height: '90px' }, placeholder: 'Ex. : la date de naissance ne correspond pas à la pièce d\'identité présentée.' });
+    const cases = h('div', { class: 'stack' }, dispo.map((sx) => {
+      const cb = h('input', { type: 'checkbox', onchange: () => { if (cb.checked) choisies.add(sx); else choisies.delete(sx); } });
+      return h('label', { class: 'row', style: { gap: '8px', cursor: 'pointer' } }, cb, h('span', null, h('b', null, sx), ' — ' + M.SECTIONS[sx]));
+    }));
+    UI.modal({ title: 'Renvoyer pour correction', icon: 'undo-2', body: h('div', { class: 'stack' },
+      h('div', { class: 'notice' }, icon('info'), 'Le dossier quitte votre tablette et retourne à ' + cible.structure + '. Un agent de cette structure le reprendra directement sur la première section à corriger.'),
+      h('div', null, h('label', { class: 'q' }, 'Sections à corriger'), cases),
+      h('div', null, h('label', { class: 'q' }, 'Motif du renvoi *'), motif)),
+    actions: [{ label: 'Annuler' }, { label: 'Renvoyer à ' + cible.structure, cls: 'primary', icon: 'undo-2', onclick: async () => {
+      if (!choisies.size) { UI.toast('Indiquez au moins une section à corriger.', 'alert-triangle'); return false; }
+      if (!motif.value.trim()) { UI.toast('Le motif du renvoi est obligatoire.', 'alert-triangle'); return false; }
+      const now = new Date().toISOString();
+      const aCorriger = SECT_ORDER.filter((x) => choisies.has(x));
+      d.historique.push({ date: now, par: p.nom, structure: p.structure,
+        action: 'Renvoyé à ' + cible.structure + ' pour correction des sections ' + aCorriger.join(', ') + ' : ' + motif.value.trim() });
+      const copie = JSON.parse(JSON.stringify(d)); delete copie._derniere;
+      try {
+        await Store.db.upsert('relais', { id: d.id, dossier: copie,
+          nom: ((d.resume.nom || '') + ' ' + (d.resume.prenoms || '')).trim() || d.identifiantProvisoire,
+          de: p.structure, de_agent: p.nom, de_tablette: p.tablette, vers: cible.structure,
+          sections: sectionsFaites(d), correction: aCorriger, motif_correction: motif.value.trim(),
+          note: 'Correction demandée : ' + motif.value.trim(),
+          arrivee_id: d.arrivee_id, passager_id: d.passager_id, statut: 'En attente', created_at: now });
+        if (d.arrivee_id) await Sites.majPassager(d.arrivee_id, d.passager_id, { statut: 'Relais', relais: { de: p.structure, vers: cible.structure, sections: aCorriger, correction: true, agent: p.nom, date: now }, agent: null, structure: null, nom: d.resume.nom, prenoms: d.resume.prenoms }, p);
+        await Store.audit('Renvoi pour correction', d.identifiant || d.identifiantProvisoire, p.structure + ' → ' + cible.structure + ' (' + aCorriger.join(', ') + ')');
+      } catch (e) { console.error(e); UI.toast('Renvoi impossible : ' + e.message, 'alert-triangle'); return false; }
+      d.statut = 'Relayé'; d.relais_vers = cible.structure; d.renvoi_correction = { vers: cible.structure, sections: aCorriger, motif: motif.value.trim(), date: now };
+      Store.Tablette.save(p.tablette, d);
+      UI.toast('Dossier renvoyé à ' + cible.structure + ' pour correction.', 'undo-2'); App.go('#/agent');
+    } }] }).el.style.maxWidth = '680px';
+  };
+
   A.reprendreRelais = async function (p, { arrivee: a, relais: rl, site }) {
     const frais = (await Store.db.list('relais')).find((x) => x.id === rl.id);
     if (!frais || frais.statut !== 'En attente') { UI.toast('Ce relais a déjà été repris par un autre agent.', 'info'); return; }
@@ -292,7 +384,10 @@
     Object.assign(d, { statut: 'Brouillon', structure: p.structure, agent: p.nom, tablette: p.tablette, site: site ? site.nom : d.site, identifiantProvisoire: `TMP-${p.tablette}-${String(n).padStart(4, '0')}`, updated_at: now, relais_de: frais.de });
     d.reponses['ENT-003'] = p.nom; d.reponses['ENT-005'] = p.structure;
     d.historique.push({ date: now, par: p.nom, structure: p.structure, action: 'Reprise du relais de ' + frais.de + ' (' + frais.de_agent + ') sur la tablette ' + p.tablette + ' : sections ' + frais.sections.join(', ') + ' déjà renseignées' });
-    d._derniere = SECT_ORDER.find((s) => !frais.sections.includes(s)) || 'I';
+    /* Correction demandée : on ouvre sur la section fautive, pas à la suite du formulaire. */
+    d._derniere = (frais.correction && frais.correction.length) ? frais.correction[0]
+      : (SECT_ORDER.find((s) => !frais.sections.includes(s)) || 'I');
+    if (frais.correction && frais.correction.length) d.correction_demandee = { de: frais.de, sections: frais.correction, motif: frais.motif_correction, date: now };
     Domaine.calculs(d, p); Store.Tablette.save(p.tablette, d);
     frais.statut = 'Repris'; frais.repris_par = p.nom + ' (' + p.structure + ')'; frais.repris_le = now; await Store.db.upsert('relais', frais);
     await Sites.majPassager(a.id, d.passager_id, { statut: 'En entretien', agent: p.nom, structure: p.structure, appel: now }, p);

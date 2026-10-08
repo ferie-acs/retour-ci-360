@@ -14,7 +14,7 @@
   S.present = (p, a) => p.role === 'admin' || (a.structures_presentes || []).includes(p.structure) || a.organisateur === p.structure;
   S.compte = (a) => { const m = a.manifeste || []; const n = (st) => m.filter((x) => x.statut === st).length; return { total: m.length, attendus: n('Attendu'), attente: n('En attente') + n('Relais'), relais: n('Relais'), entretien: n('En entretien'), enregistres: n('Enregistré'), absents: n('Absent'), arrives: m.length - n('Attendu') - n('Absent') }; };
   S.libelle = (a, sites) => { const s = (sites || []).find((x) => x.id === a.site_id); return `${a.type} ${a.numero || ''} — ${[a.ville_provenance, a.provenance].filter(Boolean).join(', ')}${s ? ' → ' + s.nom : ''}`; };
-  const kcard = (t, ic, label, val) => h('div', { class: 'kcard ' + t }, h('span', { class: 'ki' }, icon(ic)), h('div', null, h('div', { class: 'kl' }, label), h('div', { class: 'kv' }, val)));
+  const kcard = (t, ic, label, val) => h('div', { class: 'kcard ' + t }, h('span', { class: 'ki' }, icon(ic)), h('div', null, h('div', { class: 'kl' }, label), h('div', { class: 'kv' }, val)), UI.filigrane(ic));
   const carteC = (ic, t, titre, droite, ...corps) => h('div', { class: 'card p0' }, h('div', { class: 'card-h' }, h('h3', { class: 'title' }, h('span', { class: 'ticon ' + t }, icon(ic)), titre), droite || null), ...corps);
   const proche = (ll) => { let best = null, dm = Infinity; REF.localitesCI.forEach((l) => { if (!l.ll) return; const d = (l.ll[0] - ll[0]) ** 2 + (l.ll[1] - ll[1]) ** 2; if (d < dm) { dm = d; best = l; } }); return best; };
   const champ = (label, el, aide) => h('div', null, h('label', { class: 'q' }, label), el, aide ? h('div', { class: 'tiny muted', style: { marginTop: '4px' } }, aide) : null);
@@ -188,7 +188,7 @@
 
     c.append(h('div', { class: 'card', style: { marginBottom: '20px' } }, h('div', { class: 'row between' },
       h('div', { class: 'who' }, h('span', { class: 'ticon lg ' + (a.type === 'Voie terrestre' ? 'o' : 'b') }, icon(TYPES_ARR[a.type] || 'plane')),
-        h('div', null, h('div', { class: 'row', style: { gap: '8px' } }, h('b', { style: { fontSize: '17px' } }, a.type + ' ' + (a.numero || '')), h('span', { class: 'badge solid ' + STATUT_ARR[a.statut] }, a.statut === 'En cours' ? h('span', { class: 'pulse sm' }) : null, a.statut)),
+        h('div', null, h('div', { class: 'row', style: { gap: '8px' } }, h('b', { style: { fontSize: 'var(--t-lg)' } }, a.type + ' ' + (a.numero || '')), h('span', { class: 'badge solid ' + STATUT_ARR[a.statut] }, a.statut === 'En cours' ? h('span', { class: 'pulse sm' }) : null, a.statut)),
           h('div', { class: 'small muted' }, 'Provenance : ' + ([a.ville_provenance, a.provenance].filter(Boolean).join(', ') || '—') + ' · Site : ' + (site.nom || '—') + ' · ' + (a.date_reelle ? 'Arrivée le ' + UI.fmtDate(a.date_reelle, true) : 'Prévue le ' + UI.fmtDate(a.date_prevue, true))),
           h('div', { class: 'small muted' }, 'Organisateur : ' + a.organisateur + ' · enregistrée par ' + (a.cree_par || '—')))),
       h('div', null, h('div', { class: 'tiny muted', style: { marginBottom: '4px' } }, 'Entités présentes'), logos(a.structures_presentes, 8)))));
@@ -260,12 +260,12 @@
       const mineurs = ds.filter((d) => d.drapeaux && d.drapeaux.mineur).length; const vul = ds.filter((d) => d.drapeaux && (d.drapeaux.traite || d.drapeaux.mna || d.drapeaux.sante_mentale)).length;
       const hrs = Object.keys(parHeure).map(Number).sort((x, y) => x - y);
       const grille = h('div', { class: 'grid g2' },
-        carteC('building-2', 'b', 'Enregistrements par entité', Export.menu({ compact: true, titre: 'Arrivée ' + a.code + ' — enregistrements par entité et par site', sousTitre: S.libelle(a, sites), lignes, noeud: () => grille, fichier: 'arrivee_' + a.code }),
+        carteC('building-2', 'b', ['Enregistrements par entité', UI.aide('Nombre de personnes de cette arrivée enregistrées par chaque structure, d\'après la structure de l\'agent qui a mené l\'entretien. Un dossier mené à plusieurs mains est compté pour la structure qui l\'a clôturé.')], Export.menu({ compact: true, titre: 'Arrivée ' + a.code + ' — enregistrements par entité et par site', sousTitre: S.libelle(a, sites), lignes, noeud: () => grille, fichier: 'arrivee_' + a.code }),
           h('div', { class: 'card-b' }, ds.length ? Charts.hbarres({ items: items(parStruct), couleur: '#014A96', largeur: 520 }) : h('div', { class: 'empty' }, 'Aucun enregistrement pour l\'instant.'))),
-        carteC('map-pin', 'g', 'Enregistrements par site', null, h('div', { class: 'card-b' }, ds.length ? Charts.hbarres({ items: items(parSite), couleur: '#4EA738', largeur: 520 }) : h('div', { class: 'empty' }, '—'))),
-        carteC('venus-and-mars', 'p', 'Profil des personnes enregistrées', null, h('div', { class: 'card-b' }, ds.length ? h('div', { class: 'donut-legend' }, Charts.secteurs({ items: sx, taille: 170 }), h('div', null, Charts.legende(sx, ds.length),
+        carteC('map-pin', 'g', ['Enregistrements par site', UI.aide('Répartition des personnes de cette arrivée selon le site d\'accueil où leur entretien a eu lieu : aéroport, poste frontière, centre d\'accueil ou antenne régionale.')], null, h('div', { class: 'card-b' }, ds.length ? Charts.hbarres({ items: items(parSite), couleur: '#2F7D22', largeur: 520 }) : h('div', { class: 'empty' }, '—'))),
+        carteC('venus-and-mars', 'p', ['Profil des personnes enregistrées', UI.aide('Répartition par sexe des personnes de cette arrivée déjà enregistrées — les passagers encore en file d\'attente n\'y figurent pas. Sous l\'anneau : nombre de mineurs et de situations de vulnérabilité (traite présumée, mineur non accompagné, santé mentale).')], null, h('div', { class: 'card-b' }, ds.length ? h('div', { class: 'donut-legend' }, Charts.secteurs({ items: sx, taille: 170 }), h('div', null, Charts.legende(sx, ds.length),
           h('div', { class: 'small', style: { marginTop: '10px' } }, h('b', null, mineurs), ' mineur(s) · ', h('b', null, vul), ' situation(s) de vulnérabilité'))) : h('div', { class: 'empty' }, '—'))),
-        carteC('clock', 'o', 'Rythme d\'enregistrement (par heure)', null, h('div', { class: 'card-b' }, hrs.length ? Charts.groupes({ etiquettes: hrs.map((x) => x + ' h'), series: [{ nom: 'Enregistrements', couleur: '#FE7701', valeurs: hrs.map((x) => parHeure[x]) }], hauteur: 220 }) : h('div', { class: 'empty' }, '—'))));
+        carteC('clock', 'o', ['Rythme d\'enregistrement (par heure)', UI.aide('Nombre d\'entretiens clôturés par tranche horaire, pour cette arrivée. Sert à repérer les pics d\'affluence et à dimensionner les équipes au poste d\'accueil. Seules les heures comptant au moins un enregistrement sont affichées.')], null, h('div', { class: 'card-b' }, hrs.length ? Charts.groupes({ etiquettes: hrs.map((x) => x + ' h'), series: [{ nom: 'Enregistrements', couleur: '#FE7701', valeurs: hrs.map((x) => parHeure[x]) }], hauteur: 220 }) : h('div', { class: 'empty' }, '—'))));
       zone.append(carteC('users', 'v', 'Entités présentes et personnes enregistrées', null, tblEnt), h('div', { style: { height: '20px' } }), grille);
     }
 
@@ -389,9 +389,11 @@
           x.priorite ? h('span', { class: 'badge solid danger' }, x.priorite) : null, h('button', { class: 'btn sm primary', onclick: () => choisir(x) }, icon('megaphone'), lib));
         const aReprendre = relais.filter((r) => r.arrivee_id === a.id);
         zone.append(h('div', { class: 'small muted', style: { margin: '10px 0' } }, S.libelle(a, sites)),
-          aReprendre.length ? h('div', { class: 'relais-box' }, h('div', { class: 'sub-head' }, 'Relais à reprendre (' + aReprendre.length + ')'), aReprendre.map((r) => h('div', { class: 'li' }, h('span', { class: 'ticon o' }, icon('arrow-right-left')),
-            h('div', { class: 'grow' }, h('div', { class: 't1' }, r.nom), h('div', { class: 't2' }, 'Commencé par ' + r.de_agent + ' (' + r.de + ') · sections ' + r.sections.join(', ') + ' faites' + (r.note ? ' · « ' + r.note + ' »' : ''))),
-            h('button', { class: 'btn sm primary', onclick: () => choisir((a.manifeste || []).find((x) => x.id === r.passager_id) || null, r) }, icon('hand'), 'Prendre la main')))) : null,
+          aReprendre.length ? h('div', { class: 'relais-box' }, h('div', { class: 'sub-head' }, 'Relais à reprendre (' + aReprendre.length + ')'), aReprendre.map((r) => h('div', { class: 'li' }, h('span', { class: 'ticon ' + (r.correction ? 'r' : 'o') }, icon(r.correction ? 'undo-2' : 'arrow-right-left')),
+            h('div', { class: 'grow' }, h('div', { class: 't1' }, r.nom), h('div', { class: 't2' }, (r.correction && r.correction.length
+              ? 'CORRECTION demandée par ' + r.de_agent + ' (' + r.de + ') · sections ' + r.correction.join(', ') + ' · « ' + (r.motif_correction || '') + ' »'
+              : 'Commencé par ' + r.de_agent + ' (' + r.de + ') · sections ' + r.sections.join(', ') + ' faites' + (r.note ? ' · « ' + r.note + ' »' : '')))),
+            h('button', { class: 'btn sm primary', onclick: () => choisir((a.manifeste || []).find((x) => x.id === r.passager_id) || null, r) }, icon(r.correction ? 'undo-2' : 'hand'), r.correction ? 'Corriger' : 'Prendre la main')))) : null,
           miens.length ? h('div', null, h('div', { class: 'sub-head' }, 'Mes entretiens en cours'), miens.map((x) => ligne(x, 'Reprendre'))) : null,
           h('div', { class: 'sub-head' }, 'File d\'attente (' + file.length + ')'), h('div', null, file.length ? file.slice(0, 8).map((x) => ligne(x, 'Appeler')) : h('div', { class: 'small muted' }, 'Personne en attente.')),
           attendus.length ? h('details', { style: { marginTop: '8px' } }, h('summary', { class: 'small' }, 'Passagers non encore arrivés (' + attendus.length + ')'), attendus.map((x) => ligne(x, 'Entretien'))) : null,

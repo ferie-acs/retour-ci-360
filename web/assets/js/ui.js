@@ -20,6 +20,29 @@
   };
   const h = UI.h;
   UI.icon = (name, cls) => h('i', { 'data-lucide': name, class: cls || '' });
+
+  /* Filigrane : l'icône de l'indicateur reprise en grand et très pâle, en bas à droite de la carte.
+     Purement décorative — elle ne porte jamais d'information et reste sous le texte. */
+  UI.filigrane = (nom) => h('span', { class: 'filigrane', 'aria-hidden': 'true' }, UI.icon(nom));
+
+  /* Courbe d'évolution pour les indicateurs pleins. Valeurs = volumes réels par période ;
+     décorative pour le lecteur d'écran, le chiffre de la carte reste la donnée. */
+  UI.sparkline = function (valeurs, legende) {
+    const v = (valeurs || []).map((x) => (Number.isFinite(+x) ? +x : 0));
+    if (v.length < 2) return null;
+    const W = 100, H = 100, min = Math.min(...v), amp = Math.max(...v) - min || 1;
+    const px = (i) => Math.round(((i * W) / (v.length - 1)) * 100) / 100;
+    const py = (n) => Math.round((H - 4 - ((n - min) / amp) * (H - 8)) * 100) / 100;
+    let d = 'M' + px(0) + ' ' + py(v[0]);
+    for (let i = 1; i < v.length; i++) { const cx = Math.round(((px(i - 1) + px(i)) / 2) * 100) / 100; d += ' C' + cx + ' ' + py(v[i - 1]) + ',' + cx + ' ' + py(v[i]) + ',' + px(i) + ' ' + py(v[i]); }
+    const aire = d + ' L' + W + ' ' + H + ' L0 ' + H + ' Z';
+    return h('span', { class: 'kspark', title: legende || '', html:
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true" focusable="false">'
+      + '<path d="' + aire + '" fill="currentColor" fill-opacity=".18"></path>'
+      + '<path d="' + d + '" fill="none" stroke="currentColor" stroke-opacity=".75" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"></path>'
+      + '<circle cx="' + px(v.length - 1) + '" cy="' + py(v[v.length - 1]) + '" r="2.5" fill="currentColor" vector-effect="non-scaling-stroke"></circle>'
+      + '</svg>' });
+  };
   UI.refreshIcons = () => { if (window.lucide) window.lucide.createIcons({ attrs: { 'stroke-width': 2 } }); };
   UI.norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   UI.uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now() + '-' + Math.random().toString(16).slice(2));
@@ -46,15 +69,34 @@
     setTimeout(() => t.remove(), 3800);
   };
 
+  /* Fenêtre modale STRICTE : on n'en sort que par un bouton du pied.
+     Ni clic sur le fond, ni touche Échap. Une modale porte ici une décision — consentement,
+     doublon, clôture d'entretien, suppression — et un clic de travers à côté de la tablette
+     ne doit jamais l'annuler en silence. Le clic sur le fond fait tressaillir la fenêtre :
+     l'utilisateur comprend qu'elle attend une réponse, au lieu de croire à un écran figé. */
   UI.modal = function ({ title, icon, body, actions, kind, onClose }) {
     const bg = h('div', { class: 'modal-bg' });
-    const close = () => { bg.remove(); onClose && onClose(); };
-    const m = h('div', { class: 'modal ' + (kind || '') },
-      h('div', { class: 'mh' }, icon ? UI.icon(icon) : null, h('h2', null, title)),
-      h('div', { class: 'mb' }, body),
-      h('div', { class: 'mf' }, (actions || [{ label: 'Fermer' }]).map((a) =>
-        h('button', { class: 'btn ' + (a.cls || ''), onclick: async () => { if (a.onclick) { const r = await a.onclick(); if (r === false) return; } close(); } }, a.icon ? UI.icon(a.icon) : null, a.label))));
-    bg.append(m); document.body.append(bg); UI.refreshIcons();
+    const close = () => { bg.remove(); document.body.classList.remove('modal-ouverte'); onClose && onClose(); };
+    const titreId = 'modal-t-' + UI.uuid().slice(0, 8);
+    const pied = h('div', { class: 'mf' }, (actions || [{ label: 'Fermer' }]).map((a) =>
+      h('button', { class: 'btn ' + (a.cls || ''), type: 'button',
+        onclick: async () => { if (a.onclick) { const r = await a.onclick(); if (r === false) return; } close(); } },
+        a.icon ? UI.icon(a.icon) : null, a.label)));
+    const m = h('div', { class: 'modal ' + (kind || ''), role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titreId },
+      h('div', { class: 'mh' }, icon ? UI.icon(icon) : null, h('h2', { id: titreId }, title)),
+      h('div', { class: 'mb' }, body), pied);
+
+    /* Le clic sur le fond ne ferme pas — il signale. On ne coupe pas la propagation :
+       une liste déroulante ouverte dans la modale doit pouvoir se refermer normalement. */
+    bg.addEventListener('mousedown', (e) => {
+      if (e.target !== bg) return;
+      m.classList.remove('secousse'); void m.offsetWidth; m.classList.add('secousse');
+    });
+
+    bg.append(m); document.body.append(bg); document.body.classList.add('modal-ouverte'); UI.refreshIcons();
+    /* Le focus entre dans la fenêtre : sans cela, verrouiller la sortie rendrait la modale
+       impossible à quitter au clavier. */
+    setTimeout(() => { const cible = m.querySelector('input, textarea, select, button'); if (cible) cible.focus(); }, 60);
     return { close, el: m };
   };
   UI.prompt = function (title, label, placeholder) {
@@ -151,15 +193,52 @@
   };
   /* Infobulle flottante (survol) */
   let bulle = null;
-  UI.infobulle = function (el, contenu) {
-    const montrer = (e) => {
+  /* Infobulle : survol souris, focus clavier, et appui sur tablette (où « mouseenter » n'existe pas). */
+  UI.infobulle = function (el, contenu, opts) {
+    const o = opts || {};
+    /* `actif` permet de n'armer l'infobulle que dans certains états (menu réduit, par exemple) ;
+       `clic: false` l'empêche d'intercepter le clic — indispensable sur un lien de navigation. */
+    const permis = () => (typeof o.actif === 'function' ? o.actif() : true);
+    const creer = () => {
       if (!bulle) { bulle = h('div', { class: 'tip' }); document.body.append(bulle); }
-      bulle.innerHTML = ''; bulle.append(typeof contenu === 'function' ? contenu() : contenu); bulle.style.display = 'block'; placer(e);
+      bulle.className = 'tip' + (o.classe ? ' ' + o.classe : '');
+      bulle.replaceChildren(typeof contenu === 'function' ? contenu() : contenu);
+      bulle.style.display = 'block';
     };
-    const placer = (e) => { if (!bulle) return; const x = e.clientX + 14, y = e.clientY + 14; const w = bulle.offsetWidth; bulle.style.left = Math.min(x, window.innerWidth - w - 8) + 'px'; bulle.style.top = y + 'px'; };
-    el.addEventListener('mouseenter', montrer); el.addEventListener('mousemove', placer);
-    el.addEventListener('mouseleave', () => { if (bulle) bulle.style.display = 'none'; });
+    const cacher = () => { if (bulle) bulle.style.display = 'none'; };
+    /* `cote` ancre l'infobulle sur l'élément ('droite' pour un rail vertical, toute autre valeur
+       la pose dessous) ; sans `cote`, elle suit le curseur. */
+    const montrer = (e) => { if (!permis()) return; if (o.cote) { ancrer(); return; } creer(); placer(e); };
+    const placer = (e) => { if (!bulle) return; if (o.cote) return; const x = e.clientX + 14, y = e.clientY + 14; const w = bulle.offsetWidth; bulle.style.left = Math.min(x, window.innerWidth - w - 8) + 'px'; bulle.style.top = y + 'px'; };
+    /* Sans curseur (focus clavier, appui tactile), on se cale sous l'élément lui-même. */
+    const ancrer = () => {
+      if (!permis()) return;
+      creer(); if (!bulle) return;
+      const r = el.getBoundingClientRect(); const w = bulle.offsetWidth; const hb = bulle.offsetHeight;
+      if (o.cote === 'droite') {
+        /* Rail d'icônes : l'étiquette se pose à droite, centrée sur l'élément — la convention
+           pour un menu réduit, et elle ne suit pas le curseur, donc elle ne tremble pas. */
+        bulle.style.left = Math.min(r.right + 10, window.innerWidth - w - 8) + 'px';
+        bulle.style.top = Math.max(8, Math.min(r.top + (r.height - hb) / 2, window.innerHeight - hb - 8)) + 'px';
+        return;
+      }
+      bulle.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+      bulle.style.top = (r.bottom + 8 + hb > window.innerHeight ? Math.max(8, r.top - hb - 8) : r.bottom + 8) + 'px';
+    };
+    el.addEventListener('mouseenter', montrer); el.addEventListener('mousemove', placer); el.addEventListener('mouseleave', cacher);
+    el.addEventListener('focus', ancrer); el.addEventListener('blur', cacher);
+    el.addEventListener('keydown', (e) => { if (e.key === 'Escape') cacher(); });
+    if (o.clic !== false) el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); if (bulle && bulle.style.display === 'block') cacher(); else ancrer(); });
+    else el.addEventListener('click', cacher);
     return el;
+  };
+
+  /* Pastille « ? » posée à côté d'un titre de graphique : explique quelles données il contient.
+     Le texte est lu par les lecteurs d'écran (span hors écran) en plus d'être affiché au survol. */
+  UI.aide = function (texte) {
+    const b = h('button', { type: 'button', class: 'aide' }, UI.icon('info'), h('span', { class: 'sr' }, texte));
+    UI.infobulle(b, () => h('div', { class: 'tip-aide' }, texte));
+    return b;
   };
   window.UI = UI;
 })();

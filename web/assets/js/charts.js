@@ -20,7 +20,11 @@
         const v = se.valeurs[i] || 0; if (!v) return;
         const y1 = y(base + v), y0 = y(base); const r = Math.min(6, w / 4);
         const g = s('path', { d: `M${x},${y0} V${y1 + r} Q${x},${y1} ${x + r},${y1} H${x + w - r} Q${x + w},${y1} ${x + w},${y1 + r} V${y0} Z`, fill: se.couleur });
-        const ti = s('title'); ti.textContent = `${lab} — ${se.nom} : ${v}`; g.append(ti); svg.append(g); base += v;
+        /* Même infobulle que les autres graphiques (l'élément <title> natif est lent et non stylé). */
+        g.setAttribute('style', 'cursor:pointer');
+        if (window.UI && UI.infobulle) UI.infobulle(g, () => { const d = document.createElement('div'); const b = document.createElement('b'); b.textContent = lab; d.append(b, document.createElement('br'), document.createTextNode(`${se.nom} : ${v}`)); return d; });
+        else { const ti = s('title'); ti.textContent = `${lab} — ${se.nom} : ${v}`; g.append(ti); }
+        svg.append(g); base += v;
       });
       svg.append(t(ml + i * bw + bw / 2, H - 10, lab));
     });
@@ -49,7 +53,10 @@
   const NS = 'http://www.w3.org/2000/svg';
   const s = (tag, attrs, ...kids) => { const el = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs || {})) if (v !== null && v !== undefined) el.setAttribute(k, v); kids.forEach((k) => k && el.append(k)); return el; };
   const t = (x, y, txt, anchor, cls) => { const el = s('text', { x, y, 'text-anchor': anchor || 'middle', class: cls || null }); el.textContent = txt; return el; };
-  const PALETTE = ['#FE7701', '#014A96', '#4EA738', '#7C5CC4', '#0E9384', '#D6337A', '#F2B705', '#5B8DD6', '#A3541A', '#8A939C', '#2F7D22', '#C95A00'];
+  /* Palette catégorielle dérivée de la charte (bleu, orange, vert) puis étendue.
+     Les teintes alternent foncé / clair : les séries restent distinguables en niveaux de gris
+     (PDF imprimé) et pour un daltonisme rouge-vert, là où une palette à teinte seule échoue. */
+  const PALETTE = ['#014A96', '#FE7701', '#2F7D22', '#8FC2F0', '#A33A6B', '#FFD37A', '#0E6B63', '#C9A6E8', '#8A3B12', '#9ED9B4', '#4B3F8C', '#C8CFD6'];
   const pas = (max) => { const p = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000]; return p.find((x) => x >= max / 5) || Math.ceil(max / 5); };
   const fmt = (v, u) => (typeof v === 'number' ? (Number.isInteger(v) ? v.toLocaleString('fr-FR') : v.toLocaleString('fr-FR', { maximumFractionDigits: 1 })) : v) + (u || '');
   const bulle = (el, html) => { if (window.UI && UI.infobulle) UI.infobulle(el, () => { const d = document.createElement('div'); d.innerHTML = html; return d; }); return el; };
@@ -75,11 +82,16 @@
 
   /* Barres horizontales : items = [{ label, v, sous }] */
   function hbarres({ items, couleur = '#014A96', unite, max, largeur }) {
-    const W = largeur || 700, lh = 30, ml = W < 600 ? 140 : 170;
+    /* La colonne de libellés s'ajuste au texte réel plutôt que de couper à longueur fixe :
+       sur un graphe de sites ou de pays, le nom EST l'information. */
+    const W = largeur || 700, lh = 30;
+    const maxCar = Math.max(4, ...items.map((x) => String(x.label).length));
+    const coupe = W < 600 ? 28 : 38;
+    const ml = Math.min(Math.round(W * 0.42), Math.max(W < 600 ? 140 : 170, Math.round(Math.min(maxCar, coupe) * 6.6) + 14));
     const mr = 14 + 7.2 * Math.max(4, ...items.map((x) => (fmt(x.v, unite) + (x.pct !== undefined ? ` (${x.pct} %)` : '')).length)); const H = items.length * lh + 8; const M = max || Math.max(1, ...items.map((x) => x.v));
     const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, class: 'chart' });
     items.forEach((x, i) => { const y = 4 + i * lh; const w = ((W - ml - mr) * x.v) / M;
-      svg.append(t(ml - 10, y + 18, x.label.length > (W < 600 ? 20 : 26) ? x.label.slice(0, W < 600 ? 19 : 25) + '…' : x.label, 'end'));
+      svg.append(t(ml - 10, y + 18, x.label.length > coupe ? x.label.slice(0, coupe - 1) + '…' : x.label, 'end'));
       svg.append(s('rect', { x: ml, y: y + 7, width: W - ml - mr, height: 14, rx: 7, style: 'fill: var(--line-2)' }));
       svg.append(bulle(s('rect', { x: ml, y: y + 7, width: Math.max(2, w), height: 14, rx: 7, fill: x.couleur || couleur }), `<b>${x.label}</b><br>${fmt(x.v, unite)}${x.sous ? '<br>' + x.sous : ''}`));
       svg.append(t(ml + Math.max(2, w) + 8, y + 18, fmt(x.v, unite) + (x.pct !== undefined ? ` (${x.pct} %)` : ''), 'start', 'val'));

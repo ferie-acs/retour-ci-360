@@ -228,8 +228,11 @@
       if (q.widget === 'hidden') continue;
       if (q.sous !== curSous) { curSous = q.sous; box.append(h('div', { class: 'sub-head' }, q.sous)); }
       const set = (val, quiet) => {
+        /* La valeur précédente est relevée AVANT l'écriture : elle sert à tracer les
+           corrections apportées à une section renseignée par une autre structure. */
+        const avant = d.reponses[code];
         if (Domaine.estVide(val)) delete d.reponses[code]; else d.reponses[code] = val;
-        ctx.changed(code, val, quiet);
+        ctx.changed(code, val, quiet, avant);
       };
       const wrap = h('div', { class: 'qwrap', 'data-code': code },
         h('div', { class: 'qhead' }, h('label', { class: 'q' }, q.label, Domaine.obligatoire(q, d.reponses) ? h('span', { class: 'req' }, '*') : null),

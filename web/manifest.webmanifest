@@ -1,0 +1,26 @@
+{
+  "name": "Retour CI 360 — Base nationale des migrants ivoiriens de retour",
+  "short_name": "Retour CI 360",
+  "description": "Enregistrement, orientation et suivi des migrants ivoiriens de retour. Fonctionne hors connexion sur tablette.",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "id": "/retour-ci-360",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#FFFFFF",
+  "theme_color": "#014A96",
+  "categories": ["government", "productivity"],
+  "icons": [
+    { "src": "assets/img/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/img/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Nouvel entretien", "short_name": "Entretien", "url": "./#/agent", "icons": [{ "src": "assets/img/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Pipeline du parcours", "short_name": "Pipeline", "url": "./#/portail/pipeline", "icons": [{ "src": "assets/img/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Données ouvertes", "short_name": "Données", "url": "./#/donnees-ouvertes", "icons": [{ "src": "assets/img/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

@@ -18,6 +18,9 @@
      commencent au rôle de gestionnaire de cas ; le rôle d'agent enquêteur suppose une structure habilitée à enrôler */
   Ad.rolesAutorises = function (code) {
     const s = (Ad.structures || []).find((x) => x.code === code) || {};
+  /* Structures habilitées à conduire un entretien sur tablette. L'ONECI ouvre le parcours
+     (état civil, identification, biométrie) ; la DGIE et l'OIM peuvent mener l'entretien complet. */
+  const ENROLEURS = ['DGIE', 'OIM', 'ONECI'];
     if (code === 'DGIE') return ['agent', 'superviseur', 'gestionnaire', 'responsable', 'admin'];
     return [s.enrolement ? 'agent' : null, 'gestionnaire', 'superviseur', 'responsable'].filter(Boolean);
   };
@@ -46,7 +49,7 @@
     const now = new Date(); const j = (n) => new Date(now - n * 86400000).toISOString();
     const typeDe = (c) => (c === 'OIM' ? 'Organisation internationale' : c === 'OSCN' ? 'Société civile' : 'Administration publique');
     const structures = M.structures.map((s, i) => ({ id: s.code, code: s.code, nom: s.nom, type: typeDe(s.code), point_focal: '[à désigner]', email: '[à confirmer]', telephone: '[à confirmer]',
-      statut: 'Active', enrolement: ['DGIE', 'OIM'].includes(s.code), logo: '', created_at: j(200 - i), matrice: JSON.parse(JSON.stringify(M.matrice[s.code] || {})) }));
+      statut: 'Active', enrolement: ENROLEURS.includes(s.code), logo: '', created_at: j(200 - i), matrice: JSON.parse(JSON.stringify(M.matrice[s.code] || {})) }));
     const email = (nom) => UI.norm(nom).replace(/[^a-z ]/g, '').trim().split(/\s+/).reverse().join('.') + '@demo.retour360.ci';
     const base = M.PROFILS.map((p, i) => ({ id: p.id, nom: p.nom, email: email(p.nom), telephone: '+225 07 00 00 ' + String(10 + i).padStart(2, '0'), role: p.role, structure: p.structure,
       site: p.site || '', tablette: p.tablette || '', fonction: p.roleLabel, statut: 'Actif', created_at: j(180), derniere_connexion: j(i % 5) }));
@@ -70,7 +73,7 @@
       fonction: ROLES[role].label, statut, created_at: j(120 - i * 9), derniere_connexion: statut === 'Actif' ? j(i + 1) : null }));
     const annuaire = [...base, ...extra];
     const tab = (id, structure, site, statut) => ({ id, structure, site, modele: 'Tablette durcie 10 pouces', statut, affectee: (annuaire.find((u) => u.tablette === id) || {}).id || '', created_at: j(150) });
-    const tablettes = [tab('TAB-DGIE-01', 'DGIE', 'Aéroport FHB, Abidjan', 'En service'), tab('TAB-DGIE-02', 'DGIE', 'Aéroport FHB, Abidjan', 'En service'), tab('TAB-DGIE-03', 'DGIE', 'Site d\'accueil de Bouaké', 'En service'),
+    const tablettes = [tab('TAB-ONECI-02', 'ONECI', 'Aéroport FHB, Abidjan', 'En service'), tab('TAB-DGIE-01', 'DGIE', 'Aéroport FHB, Abidjan', 'En service'), tab('TAB-DGIE-02', 'DGIE', 'Aéroport FHB, Abidjan', 'En service'), tab('TAB-DGIE-03', 'DGIE', 'Site d\'accueil de Bouaké', 'En service'),
       tab('TAB-DGIE-04', 'DGIE', 'Antenne de Daloa', 'En service'), tab('TAB-DGIE-05', 'DGIE', 'Abidjan (réserve)', 'En stock'), tab('TAB-OIM-03', 'OIM', 'Bureau OIM, Abidjan', 'En service'),
       tab('TAB-OIM-04', 'OIM', 'Bureau OIM, Abidjan', 'En service'), tab('TAB-OIM-02', 'OIM', 'Bureau OIM, Abidjan', 'Révoquée')];
     return { structures, annuaire, tablettes };
@@ -87,7 +90,7 @@
       for (const t of d.tablettes) await db.upsert('tablettes', t);
       ({ structures, annuaire, tablettes } = d);
     }
-    structures.forEach((x) => { if (x.enrolement === undefined) x.enrolement = ['DGIE', 'OIM'].includes(x.code); });
+    structures.forEach((x) => { if (x.enrolement === undefined) x.enrolement = ENROLEURS.includes(x.code); });
     if (structures.length) {
       M.structures = structures.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || '')).map((s) => ({ code: s.code, nom: s.nom, statut: s.statut, logo: s.logo, enrolement: s.enrolement }));
       structures.forEach((s) => { M.matrice[s.code] = s.matrice || {}; });
@@ -104,7 +107,7 @@
   };
 
   const carte = (ic, t, titre, droite, ...corps) => h('div', { class: 'card p0' }, h('div', { class: 'card-h' }, h('h3', { class: 'title' }, h('span', { class: 'ticon ' + t }, icon(ic)), titre), droite || null), ...corps);
-  const kc = (t, ic, l, v) => h('div', { class: 'kcard ' + t }, h('span', { class: 'ki' }, icon(ic)), h('div', null, h('div', { class: 'kl' }, l), h('div', { class: 'kv' }, v)));
+  const kc = (t, ic, l, v) => h('div', { class: 'kcard ' + t }, h('span', { class: 'ki' }, icon(ic)), h('div', null, h('div', { class: 'kl' }, l), h('div', { class: 'kv' }, v)), UI.filigrane(ic));
   const champ = (lib, el, aide) => h('div', null, h('label', { class: 'q' }, lib), el, aide ? h('div', { class: 'help' }, aide) : null);
   const saisie = (obj, k, ph) => h('input', { class: 'input', value: obj[k] || '', placeholder: ph || '', oninput: (e) => { obj[k] = e.target.value; } });
   const choix = (obj, k, items, ph, onChange) => UI.dropdown({ items, value: obj[k], placeholder: ph, onChange: (v) => { obj[k] = v; onChange && onChange(v); } }).el;

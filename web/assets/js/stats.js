@@ -238,8 +238,8 @@
           const og = r.ventilForcee ? gs : ordonner(gs, st.ventil);
           const items = og.map((g) => ({ label: DIM[st.ventil] && DIM[st.ventil].temps ? libMois(g) : g, v: Math.round(r.groupes[g].moy * 10) / 10, sous: r.groupes[g].n + ' valeur(s)' }));
           if (vue === 'tableau') graphe.append(tableau([r.ventilForcee || DIM[st.ventil].l, 'Moyenne', 'Valeurs'], og.map((g, i) => [items[i].label, items[i].v.toLocaleString('fr-FR') + (ind.unite || ' h'), r.groupes[g].n])));
-          else if (vue === 'courbe' || (DIM[st.ventil] && DIM[st.ventil].temps)) graphe.append(Charts.courbes({ etiquettes: items.map((x) => x.label), series: [{ nom: 'Moyenne', couleur: '#4EA738', valeurs: items.map((x) => x.v) }], unite: ind.unite }));
-          else graphe.append(Charts.hbarres({ items, couleur: '#4EA738', unite: ind.unite || ' h' }));
+          else if (vue === 'courbe' || (DIM[st.ventil] && DIM[st.ventil].temps)) graphe.append(Charts.courbes({ etiquettes: items.map((x) => x.label), series: [{ nom: 'Moyenne', couleur: '#2F7D22', valeurs: items.map((x) => x.v) }], unite: ind.unite }));
+          else graphe.append(Charts.hbarres({ items, couleur: '#2F7D22', unite: ind.unite || ' h' }));
           lignes.push([r.ventilForcee || DIM[st.ventil].l, 'Moyenne', 'Valeurs'], ...og.map((g, i) => [items[i].label, items[i].v, r.groupes[g].n]));
         } else { graphe.append(h('div', { class: 'notice' }, icon('info'), 'Choisissez une ventilation pour comparer la moyenne entre groupes (sexe, âge, région, provenance…).')); lignes.push(['Indicateur', 'Moyenne', 'Valeurs'], [ind.l, Math.round(r.moy * 10) / 10, r.n]); }
       } else if (r.t === 'evolution') {
@@ -271,18 +271,30 @@
     // Galerie : vue d'ensemble statistique de la sélection
     function remplirGalerie() {
       const ds = appliquer(); galerie.innerHTML = '';
-      const carte = (ic, t, titre, corps, id, lignes) => { const el = h('div', { class: 'card p0' }); el.append(h('div', { class: 'card-h' }, h('h3', { class: 'title' }, h('span', { class: 'ticon ' + t }, icon(ic)), titre),
+      /* `titre` peut être un texte ou [texte, pastille d'aide] ; l'export ne garde que le texte. */
+      const carte = (ic, t, titre, corps, id, lignes) => { const lib = Array.isArray(titre) ? String(titre[0]) : titre;
+        const el = h('div', { class: 'card p0' }); el.append(h('div', { class: 'card-h' }, h('h3', { class: 'title' }, h('span', { class: 'ticon ' + t }, icon(ic)), titre),
         h('div', { class: 'row', style: { gap: '10px' } }, id ? h('button', { class: 'link', onclick: () => { st.ind = id; ddInd.set(id); afficher(); document.querySelector('.res-zone').scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, 'Analyser') : null,
-          lignes ? Export.menu({ compact: true, titre, sousTitre: critères(), lignes, noeud: () => el, fichier: 'graphique_' + (id || 'statistique') }) : null)), h('div', { class: 'card-b' }, corps)); return el; };
+          lignes ? Export.menu({ compact: true, titre: lib, sousTitre: critères(), lignes, noeud: () => el, fichier: 'graphique_' + (id || 'statistique') }) : null)), h('div', { class: 'card-b' }, corps)); return el; };
       const lig = (items, ent) => () => [ent || ['Modalité', 'Effectif', 'Part (%)'], ...items.map((x) => [x.label, x.v, x.pct])];
+      /* Aide d'un graphique de la galerie : reprend la définition et les référentiels du catalogue
+         d'indicateurs, puis précise le périmètre réellement calculé et le secret statistique. */
+      const aideInd = (id, lecture) => {
+        const ind = IND.find((x) => x.id === id); if (!ind) return null;
+        return UI.aide([ind.def || ind.l, lecture,
+          'Calculé sur ' + ds.length + ' dossier(s) accessible(s). Filtres actifs — ' + critères() + '.',
+          ind.s ? 'Repose sur la section ' + ind.s + ' du formulaire.' : '',
+          ind.src && ind.src.length ? 'Référentiels : ' + ind.src.join(' ; ') + '.' : '',
+          petit ? 'Les effectifs inférieurs à ' + UI.PARAMS.secret + ' sont masqués (secret statistique).' : ''].filter(Boolean).join(' '));
+      };
       const rep = (id, n) => { const ind = IND.find((x) => x.id === id); if (!peut(ind.s)) return null; return calculer(ind, ds, data.refs, '').items.slice(0, n || 6); };
       const ev = calculer(IND[0], ds, data.refs, '');
-      galerie.append(carte('trending-up', 'o', 'Retours par mois', Charts.courbes({ etiquettes: ev.mois.map(libMois), series: [{ nom: 'Migrants', couleur: '#FE7701', valeurs: ev.mois.map((m) => (ev.parM[m] || {}).Ensemble || 0) }], hauteur: 300, largeur: 480 }), 'vol', () => [['Mois', 'Migrants'], ...ev.mois.map((m) => [libMois(m), (ev.parM[m] || {}).Ensemble || 0])]));
-      galerie.append(carte('users', 'b', 'Pyramide des âges', Charts.pyramide({ tranches: TRANCHES, hommes: ev.pyr.hommes, femmes: ev.pyr.femmes, largeur: 460 }), 'age', () => [['Tranche d\'âge', 'Hommes', 'Femmes'], ...TRANCHES.map((tr, i) => [tr, ev.pyr.hommes[i], ev.pyr.femmes[i]])]));
-      const sx = rep('sexe'); galerie.append(carte('venus-and-mars', 'p', 'Répartition par sexe', h('div', { class: 'donut-legend' }, Charts.secteurs({ items: sx.map((x, i) => ({ ...x, couleur: ['#014A96', '#FE7701', '#8A939C'][i] })), taille: 170 }), Charts.legende(sx.map((x, i) => ({ ...x, couleur: ['#014A96', '#FE7701', '#8A939C'][i] })), sx.reduce((a, x) => a + x.v, 0))), 'sexe', lig(sx)));
-      [['provenance', 'globe', 'v', 'Pays de provenance', '#014A96'], ['motif', 'target', 'g', 'Motifs de départ', '#4EA738'], ['vulntypes', 'shield-alert', 'r', 'Vulnérabilités', '#D92D20'], ['besoins', 'hand-heart', 'o', 'Besoins immédiats', '#FE7701'], ['region', 'map-pin', 't', 'Régions de retour', '#0E9384'], ['education', 'graduation-cap', 'b', 'Niveau d\'étude', '#7C5CC4']].forEach(([id, ic, t, titre, col]) => {
+      galerie.append(carte('trending-up', 'o', ['Retours par mois', aideInd('vol', 'Un point par mois ; la surface orange sous la courbe n\'ajoute aucune information, elle aide seulement à suivre le niveau.')], Charts.courbes({ etiquettes: ev.mois.map(libMois), series: [{ nom: 'Migrants', couleur: '#FE7701', valeurs: ev.mois.map((m) => (ev.parM[m] || {}).Ensemble || 0) }], hauteur: 300, largeur: 480 }), 'vol', () => [['Mois', 'Migrants'], ...ev.mois.map((m) => [libMois(m), (ev.parM[m] || {}).Ensemble || 0])]));
+      galerie.append(carte('users', 'b', ['Pyramide des âges', aideInd('age', 'Hommes à gauche en bleu, femmes à droite en orange ; une ligne par tranche d\'âge, de la plus jeune en haut à la plus âgée en bas.')], Charts.pyramide({ tranches: TRANCHES, hommes: ev.pyr.hommes, femmes: ev.pyr.femmes, largeur: 460 }), 'age', () => [['Tranche d\'âge', 'Hommes', 'Femmes'], ...TRANCHES.map((tr, i) => [tr, ev.pyr.hommes[i], ev.pyr.femmes[i]])]));
+      const sx = rep('sexe'); galerie.append(carte('venus-and-mars', 'p', ['Répartition par sexe', aideInd('sexe')], h('div', { class: 'donut-legend' }, Charts.secteurs({ items: sx.map((x, i) => ({ ...x, couleur: ['#014A96', '#FE7701', '#C8CFD6'][i] })), taille: 170 }), Charts.legende(sx.map((x, i) => ({ ...x, couleur: ['#014A96', '#FE7701', '#C8CFD6'][i] })), sx.reduce((a, x) => a + x.v, 0))), 'sexe', lig(sx)));
+      [['provenance', 'globe', 'v', 'Pays de provenance', '#014A96'], ['motif', 'target', 'g', 'Motifs de départ', '#2F7D22'], ['vulntypes', 'shield-alert', 'r', 'Vulnérabilités', '#D92D20'], ['besoins', 'hand-heart', 'o', 'Besoins immédiats', '#FE7701'], ['region', 'map-pin', 't', 'Régions de retour', '#0E6B63'], ['education', 'graduation-cap', 'b', 'Niveau d\'étude', '#4B3F8C']].forEach(([id, ic, t, titre, col]) => {
         const it = rep(id); if (!it) return;
-        galerie.append(carte(ic, t, titre, it.length ? Charts.hbarres({ items: it.map((x) => ({ ...x, label: (pays(x.label) ? pays(x.label) + ' ' : '') + x.label })), couleur: col, largeur: 480 }) : h('div', { class: 'empty' }, 'Aucune donnée'), id, lig(it)));
+        galerie.append(carte(ic, t, [titre, aideInd(id, 'Les modalités sont classées de la plus fréquente à la moins fréquente ; seules les 6 premières sont représentées ici. Le détail complet est dans l\'analyse de l\'indicateur.')], it.length ? Charts.hbarres({ items: it.map((x) => ({ ...x, label: (pays(x.label) ? pays(x.label) + ' ' : '') + x.label })), couleur: col, largeur: 480 }) : h('div', { class: 'empty' }, 'Aucune donnée'), id, lig(it)));
       });
       UI.refreshIcons();
     }

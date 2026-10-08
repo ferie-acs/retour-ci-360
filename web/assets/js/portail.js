@@ -26,10 +26,10 @@
   async function charger() {
     const db = Store.db;
     const opt = (t) => db.list(t).catch(() => []);
-    const [ds, refs, als, dbl, sites, arrivees, transferts, approbations, parametres, rapports, annonces] = await Promise.all([db.listDossiers(), db.list('referencements'), db.list('alertes'), opt('doublons'), opt('sites'), opt('arrivees'), opt('transferts'), opt('approbations'), opt('parametres'), opt('rapports'), opt('annonces')]);
+    const [ds, refs, als, dbl, sites, arrivees, transferts, approbations, parametres, rapports, annonces, relais] = await Promise.all([db.listDossiers(), db.list('referencements'), db.list('alertes'), opt('doublons'), opt('sites'), opt('arrivees'), opt('transferts'), opt('approbations'), opt('parametres'), opt('rapports'), opt('annonces'), opt('relais')]);
     const p = App.profil;
     const acces = ds.map((d) => ({ d, motif: Domaine.concerne(p, d, refs, als) })).filter((x) => x.motif);
-    return { ds, refs, als, dbl, acces, sites, arrivees, transferts, approbations, parametres, rapports, annonces };
+    return { ds, refs, als, dbl, acces, sites, arrivees, transferts, approbations, parametres, rapports, annonces, relais };
   }
   const nomVisible = (p, d) => (Domaine.droits(p, 'II').includes('L') ? `${d.resume.nom || ''} ${d.resume.prenoms || ''}`.trim() : null);
   const mesRefs = (p, refs) => (p.role === 'admin' ? refs : refs.filter((r) => r.destinataire === p.structure || r.emetteur === p.structure || (p.role === 'superviseur' && r.emetteur === p.structure)));
@@ -55,19 +55,18 @@
     const ADMIN = { 'admin-utilisateurs': ['utilisateurs', ['admin', 'superviseur']], 'admin-structures': ['structures_', ['admin']], 'admin-tablettes': ['tablettes_', ['admin']], habilitations: [null, ['admin']], journal: [null, ['admin', 'superviseur']], doublons: [null, ['admin', 'superviseur']],
       qualite: [null, ['admin', 'superviseur', 'responsable']], rapports: [null, ['admin', 'superviseur', 'responsable']], parametres: [null, ['admin']], pilotage: [null, ['admin', 'responsable']] };
     if (ADMIN[v] && !ADMIN[v][1].includes(p.role)) { page.append(h('div', { class: 'notice danger' }, icon('lock'), 'Cette page est réservée à l\'administration de la plateforme.')); UI.refreshIcons(); return; }
-    const MODULES = { sites: () => Sites.sites(page, data), arrivees: () => Sites.arrivees(page, data), arrivee: () => Sites.arrivee(page, data, id), taches: () => Taches.page(page, data), reglages: () => Reglages.page(page, p, data), pilotage: () => Pilotage.page(page, data), annonces: () => Annonces.page(page, p, data.annonces, data.arrivees),
+    const MODULES = { sites: () => Sites.sites(page, data), arrivees: () => Sites.arrivees(page, data), arrivee: () => Sites.arrivee(page, data, id), taches: () => Taches.page(page, data), reglages: () => Reglages.page(page, p, data), pilotage: () => Pilotage.page(page, data), pipeline: () => Pipeline.page(page, data), annonces: () => Annonces.page(page, p, data.annonces, data.arrivees),
       qualite: () => Qualite.page(page, data), rapports: () => Qualite.rapports(page, data), parametres: () => Taches.parametres(page, data) };
     if (v === 'dossier') await P.fiche(page, data, id);
     else if (MODULES[v]) await MODULES[v]();
     else if (v === 'statistiques') Stats.page(page, data);
     else if (ADMIN[v] && ADMIN[v][0]) await Admin[ADMIN[v][0]](page, data);
     else await (P[v] || P.tableau)(page, data);
-    if (v === 'tableau') { const bd = Annonces.bandeau(p, data.annonces, data.arrivees); if (bd && page.firstChild) page.firstChild.after(bd); }
     UI.refreshIcons();
   };
 
   /* ---------- Tableau de bord ---------- */
-  P.tableau = function (c, { acces, refs, als, dbl }) {
+  P.tableau = function (c, { acces, refs, als, dbl, annonces }) {
     const p = App.profil; const ds = acces.map((x) => x.d);
     const mr = mesRefs(p, refs); const ma = mesAlertes(p, als);
     const recus = mr.filter((r) => r.destinataire === p.structure);
@@ -88,23 +87,42 @@
     c.append(h('div', { class: 'page-head' },
       h('div', null, h('h1', null, 'Bienvenue, ' + p.nom), h('p', { class: 'sub' }, 'Vous avez ', h('b', { style: { color: 'var(--orange-text)' } }, aTraiter.length), ' référencement(s) à traiter — ', STRUCT(p.structure))),
       h('span', { class: 'datechip' }, icon('calendar'), UI.fmtDate(debut.toISOString()) + ' – ' + UI.fmtDate(now.toISOString()))));
-    if (critiques.length) {
-      const ban = h('div', { class: 'banner' }, icon('info'), h('span', null, h('b', null, critiques.length + ' alerte(s) critique(s)'), ' en attente de prise en charge. ', h('a', { href: '#/portail/alertes', style: { color: 'var(--orange-text)', fontWeight: 700 } }, 'Voir les alertes')),
-        h('button', { class: 'x', title: 'Masquer', onclick: () => ban.remove() }, icon('x')));
-      c.append(ban);
-    }
+    /* Un seul bloc « ce qui demande votre attention » : alertes et annonces partagent la même
+       forme et la même couleur, les empiler revenait à répéter deux fois le même geste visuel. */
+    const attention = h('div', { class: 'attention' });
+    if (critiques.length) attention.append(h('div', { class: 'banner' }, icon('siren'),
+      h('span', null, h('b', null, critiques.length + ' alerte(s) critique(s)'), ' en attente de prise en charge. ',
+        h('a', { href: '#/portail/alertes', style: { fontWeight: 700 } }, 'Voir les alertes'))));
+    const bandeauAnnonces = Annonces.bandeau(p, annonces);
+    if (bandeauAnnonces) attention.append(bandeauAnnonces);
+    if (attention.children.length) c.append(attention);
     // Indicateurs pleins
-    const kcard = (t, ic, label, val, chip, chipIc) => h('div', { class: 'kcard ' + t }, h('span', { class: 'ki' }, icon(ic)),
-      h('div', null, h('div', { class: 'kl' }, label), h('div', { class: 'kv' }, val, chip !== null ? h('span', { class: 'kchip' }, icon(chipIc || 'arrow-up'), chip) : null)));
-    c.append(h('div', { class: 'grid g4' },
-      kcard('o', 'folder-open', 'Dossiers accessibles', ds.length, '+' + ceMois + ' ce mois'),
-      kcard('d', 'send', 'Référencements à traiter', aTraiter.length, retard.length ? retard.length + ' en retard' : null, 'arrow-down'),
-      kcard('g', 'heart-handshake', 'Prises en charge en cours', enCours.length, clotures.length + ' clôturés', 'check'),
-      kcard('b', 'siren', 'Alertes ouvertes', ouvertes.length, critiques.length ? critiques.length + ' critiques' : null, 'triangle-alert')));
+    /* Volume réel par mois sur les 6 derniers mois, pour la courbe de fond des indicateurs. */
+    const serie = (rows) => {
+      const t6 = [0, 0, 0, 0, 0, 0];
+      (rows || []).forEach((r) => {
+        const d = new Date(r.created_at);
+        if (isNaN(d)) return;
+        const recul = (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
+        if (recul >= 0 && recul < 6) t6[5 - recul]++;
+      });
+      return t6;
+    };
+    const MOIS6 = 'Volume mensuel sur les 6 derniers mois';
+    const kcard = (t, ic, label, val, chip, chipIc, rows) => {
+      const sp = rows ? UI.sparkline(serie(rows), label + ' — ' + MOIS6) : null;
+      return h('div', { class: 'kcard ' + t + (sp ? ' a-courbe' : '') }, h('span', { class: 'ki' }, icon(ic), UI.filigrane(ic)),
+        h('div', null, h('div', { class: 'kl' }, label), h('div', { class: 'kv' }, val, chip !== null ? h('span', { class: 'kchip' }, icon(chipIc || 'arrow-up'), chip) : null)), sp);
+    };
+    c.append(h('div', { class: 'grid g4 kpi-row' },
+      kcard('o hero', 'folder-open', 'Dossiers accessibles', ds.length, '+' + ceMois + ' ce mois', null, ds),
+      kcard('d', 'send', 'Référencements à traiter', aTraiter.length, retard.length ? retard.length + ' en retard' : null, 'arrow-down', mr),
+      kcard('g', 'heart-handshake', 'Prises en charge en cours', enCours.length, clotures.length + ' clôturés', 'check', mr.filter((r) => ['Accepté', 'En cours de prise en charge', 'Clôturé'].includes(r.statut))),
+      kcard('b', 'siren', 'Alertes ouvertes', ouvertes.length, critiques.length ? critiques.length + ' critiques' : null, 'triangle-alert', ma)));
     // Indicateurs blancs
     const scard = (val, label, ic, t, foot, href) => h('div', { class: 'card scard' },
       h('div', { class: 'top' }, h('div', null, h('div', { class: 'v' }, val), h('div', { class: 'l' }, label)), h('span', { class: 'ticon lg ' + t }, icon(ic))),
-      h('div', { class: 'bot' }, h('span', null, foot), h('a', { class: 'link', href }, 'Voir tout')));
+      h('div', { class: 'bot' }, h('span', null, foot), h('a', { class: 'link', href }, 'Voir tout')), UI.filigrane(ic));
     c.append(h('div', { class: 'grid g4', style: { marginTop: '20px' } },
       scard(petit(mineurs.length), 'Mineurs', 'baby', 'b', h('span', null, h('span', { class: 'up' }, ds.length ? Math.round((100 * mineurs.length) / ds.length) + ' %' : '0 %'), ' des dossiers'), '#/portail/dossiers'),
       scard(petit(vuln.length), 'Situations de vulnérabilité', 'shield-alert', 'r', h('span', null, h('span', { class: 'down' }, ds.filter((d) => d.drapeaux && d.drapeaux.traite).length), ' traite présumée'), '#/portail/dossiers'),
@@ -140,18 +158,18 @@
         h('div', { class: 'tip-sep' }),
         ['Émis', 'Reçu', 'Accepté', 'En cours de prise en charge', 'Refusé'].map((x) => ligne(x, st(x), x === 'Refusé' ? '#D92D20' : '#FFCFA6')));
     };
-    const vue = P.carte('info', 'b', 'Vue d\'ensemble', null,
+    const vue = P.carte('info', 'b', ['Vue d\'ensemble', UI.aide('Structures déclarées sur la plateforme, agents distincts ayant mené au moins un entretien, et tablettes distinctes ayant servi à un enregistrement — calculés sur les dossiers accessibles à votre structure.')], null,
       h('div', { class: 'card-b' },
         h('div', { class: 'tiles' },
           h('div', { class: 'tile' }, h('span', { style: { color: 'var(--blue)' } }, icon('building-2')), h('div', { class: 'tl' }, 'Structures'), h('div', { class: 'tv' }, M.structures.length)),
           h('div', { class: 'tile' }, h('span', { style: { color: 'var(--orange-text)' } }, icon('users')), h('div', { class: 'tl' }, 'Agents'), h('div', { class: 'tv' }, new Set(ds.map((d) => d.agent)).size)),
           h('div', { class: 'tile' }, h('span', { style: { color: 'var(--green-text)' } }, icon('tablet')), h('div', { class: 'tl' }, 'Tablettes'), h('div', { class: 'tv' }, new Set(ds.map((d) => d.tablette).filter(Boolean)).size)))),
-      h('div', { class: 'card-h', style: { borderTop: '1px solid var(--line)' } }, h('h3', { class: 'title' }, 'Référencements'), h('span', { class: 'datechip', style: { height: '30px' } }, icon('calendar'), '6 mois')),
+      h('div', { class: 'card-h', style: { borderTop: '1px solid var(--line)' } }, h('h3', { class: 'title' }, 'Référencements', UI.aide('Part des référencements clôturés (anneau extérieur, vert) et encore en cours (anneau intérieur, orange), sur l\'ensemble des référencements de votre structure. Survolez un anneau pour le détail par statut : Émis, Reçu, Accepté, En cours de prise en charge, Refusé.')), h('span', { class: 'datechip', style: { height: '30px' } }, icon('calendar'), '6 mois')),
       h('div', { class: 'card-b' }, h('div', { class: 'donut-wrap' },
-        Charts.anneau({ parts: [{ v: clotures.length / totRefs, couleur: '#3E922D', info: () => tipRefs('Clôturés') }, { v: (enCours.length + aTraiter.length) / totRefs, couleur: '#FE7701', info: () => tipRefs('En cours') }] }),
+        Charts.anneau({ parts: [{ v: clotures.length / totRefs, couleur: '#2F7D22', info: () => tipRefs('Clôturés') }, { v: (enCours.length + aTraiter.length) / totRefs, couleur: '#FE7701', info: () => tipRefs('En cours') }] }),
         UI.infobulle(h('div', { class: 'donut-stat' }, h('b', null, clotures.length), h('span', { style: { color: 'var(--green-text)', fontWeight: 700 } }, 'Clôturés'), h('div', null, h('span', { class: 'badge solid ok' }, Math.round((100 * clotures.length) / totRefs) + ' %'))), () => tipRefs('Clôturés')),
         UI.infobulle(h('div', { class: 'donut-stat' }, h('b', null, enCours.length + aTraiter.length), h('span', { style: { color: 'var(--orange-text)', fontWeight: 700 } }, 'En cours'), h('div', null, h('span', { class: 'badge solid accent' }, Math.round((100 * (enCours.length + aTraiter.length)) / totRefs) + ' %'))), () => tipRefs('En cours')))));
-    c.append(h('div', { class: 'grid g-2-1', style: { marginTop: '20px' } }, P.carte('chart-column', 'o', 'Enrôlements par mois', periodes, h('div', { class: 'card-b' }, graphe)), vue));
+    c.append(h('div', { class: 'grid g-2-1', style: { marginTop: '20px' } }, P.carte('chart-column', 'o', ['Enrôlements par mois', UI.aide('Nombre de dossiers créés chaque mois, empilés par structure qui a mené l\'entretien : DGIE, OIM, puis les autres structures regroupées. Compte uniquement les dossiers auxquels votre structure a accès. Période réglable : 3 mois, 6 mois ou 1 an.')], periodes, h('div', { class: 'card-b' }, graphe)), vue));
 
     // Trois listes
     const groupe = (f) => { const m = {}; ds.forEach((d) => { const k = f(d) || 'Non renseigné'; m[k] = (m[k] || 0) + 1; }); return Object.entries(m).sort((a, b) => b[1] - a[1]); };
@@ -159,7 +177,7 @@
     const liPays = pays.map(([n, k], i) => h('div', { class: 'li' }, h('span', { class: 'thumbx', style: { background: 'var(--bg)' } }, drapeau(n)), h('div', { class: 'grow' }, h('div', { class: 't1' }, n), h('div', { class: 't2' }, petit(k) + ' migrant(s) de retour')),
       h('span', { class: 'trend', style: { color: i < 2 ? 'var(--green-text)' : 'var(--muted)' } }, Math.round((100 * k) / Math.max(1, ds.length)) + ' %')));
     const recents = acces.slice().sort((a, b) => (b.d.synced_at || '').localeCompare(a.d.synced_at || '')).slice(0, 5);
-    const liDos = recents.map(({ d }, i) => h('a', { class: 'li', href: '#/portail/dossier/' + d.id, style: { textDecoration: 'none', color: 'inherit' } }, h('span', { class: 'thumbx ticon ' + AV[i % AV.length], style: { fontSize: '14px' } }, UI.initials(nomVisible(p, d) || '? ?')),
+    const liDos = recents.map(({ d }, i) => h('a', { class: 'li', href: '#/portail/dossier/' + d.id, style: { textDecoration: 'none', color: 'inherit' } }, h('span', { class: 'thumbx ticon ' + AV[i % AV.length], style: { fontSize: 'var(--t-md)' } }, UI.initials(nomVisible(p, d) || '? ?')),
       h('div', { class: 'grow' }, h('div', { class: 't1' }, nomVisible(p, d) || 'Identité restreinte'), h('div', { class: 't2' }, h('span', { style: { color: 'var(--orange-text)', fontWeight: 700 } }, d.identifiant))),
       h('div', { class: 'end' }, h('div', { class: 'muted' }, UI.fmtDate(d.synced_at)), d.drapeaux && d.drapeaux.mna ? h('span', { class: 'badge solid danger' }, 'MNA') : d.drapeaux && d.drapeaux.traite ? h('span', { class: 'badge solid warn' }, 'Traite') : d.drapeaux && d.drapeaux.mineur ? h('span', { class: 'badge solid violet' }, 'Mineur') : h('span', { class: 'badge solid ok' }, 'Adulte'))));
     const GRAV_S = { Critique: 'danger', 'Élevée': 'warn', 'Modérée': 'info' };
@@ -244,7 +262,7 @@
     const motifs = {}; tous.forEach((x) => (x['PAR-006'] || []).forEach((m) => { motifs[m] = (motifs[m] || 0) + 1; }));
     const motif = Object.entries(motifs).sort((a, b) => b[1] - a[1])[0] || ['—', 0];
     const etape = A.transit.filter((x) => x.etape).sort((a, b) => b.etape - a.etape)[0];
-    const tile = (ic, t, v, l, d) => h('div', { class: 'card itile' }, h('span', { class: 'ticon lg ' + t }, icon(ic)), h('div', null, h('div', { class: 'v' }, v), h('div', { class: 'l' }, l), h('div', { class: 'd' }, d)));
+    const tile = (ic, t, v, l, d) => h('div', { class: 'card itile' }, h('span', { class: 'ticon lg ' + t }, icon(ic)), h('div', null, h('div', { class: 'v' }, v), h('div', { class: 'l' }, l), h('div', { class: 'd' }, d)), UI.filigrane(ic));
     c.append(h('div', { class: 'page-head', style: { margin: '28px 0 14px' } }, h('div', null, h('h2', { style: { margin: 0 } }, 'Indicateurs clés du parcours migratoire'), h('p', { class: 'sub' }, `Calculés sur ${ds.length} dossiers accessibles, dont ${n} avec un itinéraire renseigné.`))),
       h('div', { class: 'grid g4' },
         tile('hourglass', 'o', abs.length ? Math.round(moyenne(abs)) + ' mois' : '—', 'Durée moyenne d\'absence', 'Du départ de Côte d\'Ivoire au retour'),
@@ -338,7 +356,7 @@
       const rows = resultats(); const nbPages = Math.max(1, Math.ceil(rows.length / parPage)); page = Math.min(page, nbPages);
       compteur.textContent = rows.length + ' migrant(s)';
       resume.innerHTML = '';
-      const k = (t, ic, l, v) => h('div', { class: 'kcard ' + t }, h('span', { class: 'ki' }, icon(ic)), h('div', null, h('div', { class: 'kl' }, l), h('div', { class: 'kv' }, v)));
+      const k = (t, ic, l, v) => h('div', { class: 'kcard ' + t }, h('span', { class: 'ki' }, icon(ic)), h('div', null, h('div', { class: 'kl' }, l), h('div', { class: 'kv' }, v)), UI.filigrane(ic));
       resume.append(k('o', 'users', 'Migrants enregistrés', rows.length), k('d', 'venus-and-mars', 'Hommes / femmes', rows.filter((d) => d.resume.sexe === 'Homme').length + ' / ' + rows.filter((d) => d.resume.sexe === 'Femme').length),
         k('g', 'baby', 'Mineurs', rows.filter((d) => d.drapeaux && d.drapeaux.mineur).length), k('b', 'route', 'Avec itinéraire', rows.filter((d) => d.itineraire && (d.itineraire.pays || []).length).length));
       const vue = rows.slice((page - 1) * parPage, page * parPage);
@@ -472,7 +490,9 @@
     const x = data.acces.find((y) => y.d.id === id);
     if (!x) { c.append(h('div', { class: 'notice danger' }, icon('lock'), 'Ce dossier n\'est pas accessible à votre structure.')); await Store.audit('Accès refusé', id, ''); return; }
     const d = x.d; const f = d.drapeaux || {};
-    await Store.audit('Consultation du dossier', d.identifiant, 'Motif d\'accès : ' + x.motif);
+    /* Une consultation s'inscrit une fois par ouverture, pas à chaque rendu : un changement de
+       thème ou une synchronisation ne sont pas de nouveaux accès au dossier. */
+    if (P.dernierVu !== d.id) { P.dernierVu = d.id; await Store.audit('Consultation du dossier', d.identifiant, 'Motif d\'accès : ' + x.motif); }
     const refs = data.refs.filter((r) => r.dossier_id === d.id); const als = data.als.filter((a) => a.dossier_id === d.id);
     const nom = nomVisible(p, d);
     const photo = Domaine.droits(p, 'I').includes('L') && d.medias && d.medias.photo;
@@ -494,7 +514,7 @@
         h('button', { class: 'btn', onclick: () => history.back() }, icon('arrow-left'), 'Retour'))));
     c.append(h('div', { class: 'card', style: { marginBottom: '20px' } }, h('div', { class: 'row between' },
       h('div', { class: 'dossier-head' }, photo ? h('img', { class: 'ph', src: d.medias.photo }) : h('span', { class: 'ini' }, nom ? UI.initials(nom) : icon('user-round')),
-        h('div', null, h('h2', { style: { margin: 0, fontSize: '20px' } }, nom || 'Identité non accessible à votre structure'),
+        h('div', null, h('h2', { style: { margin: 0, fontSize: 'var(--t-xl)' } }, nom || 'Identité non accessible à votre structure'),
           h('div', { class: 'row', style: { gap: '8px', marginTop: '4px' } }, h('span', { class: 'idlink' }, d.identifiant),
             Domaine.verifIdentifiant(d.identifiant) ? h('span', { class: 'badge ok' }, icon('check'), 'Clé de contrôle valide') : h('span', { class: 'badge danger' }, 'Clé invalide'),
             h('span', { class: 'muted small row', style: { gap: '6px' } }, Admin.logo(d.structure, 22), 'Enrôlé par ' + d.structure + ' (' + d.agent + ', ' + d.site + ') le ' + UI.fmtDate(d.created_at))))),
@@ -511,7 +531,11 @@
     const peutReferencer = p.role === 'admin' || Domaine.droits(p, 'XIV').includes('S');
     const grid = h('div', { class: 'fiche-grid' });
     const left = h('div'); const right = h('div', { class: 'stack' });
-    SECT.forEach((s) => left.append(P.section(d, s)));
+    /* Quinze tiroirs fermés n'apprenaient rien : le premier écran d'un dossier ne montrait
+       aucune donnée. Même motif que l'entretien — un rail de sections, un panneau de contenu.
+       Les classes sont celles du formulaire, donc le rail devient horizontal sur tablette
+       sans une ligne de style supplémentaire. */
+    left.append(P.sections(d, SECT));
     const lst = (arr, f2, vide) => h('div', { class: 'card-b', style: { paddingTop: '4px', paddingBottom: '4px' } }, arr.length ? arr.map(f2) : h('div', { class: 'small muted', style: { padding: '12px 0' } }, vide));
     right.append(
       P.carte('send', 'v', 'Référencements', peutReferencer ? h('button', { class: 'btn sm primary', onclick: () => P.emettre(d) }, icon('plus'), 'Émettre') : null,
@@ -525,17 +549,72 @@
     grid.append(left, right); c.append(grid);
   };
 
+  /* Rail des sections + panneau : une seule section à l'écran, toutes atteignables en un clic. */
+  P.sections = function (d, SECT) {
+    const p = App.profil;
+    const rail = h('div', { class: 'card steps' }); const pane = h('div');
+    const infos = {};
+    SECT.forEach((s) => {
+      const dr = Domaine.droits(p, s);
+      infos[s] = { dr, lisible: dr.includes('L'), n: P.compteSection(d, s) };
+    });
+    /* La section choisie est retenue par dossier : un rendu déclenché ailleurs (synchronisation,
+       thème) ne doit pas ramener le lecteur à la section I. */
+    P.sectionChoisie = P.sectionChoisie || {};
+    const defaut = SECT.find((s) => infos[s].lisible && infos[s].n) || SECT.find((s) => infos[s].lisible) || SECT[0];
+    let cur = SECT.includes(P.sectionChoisie[d.id]) ? P.sectionChoisie[d.id] : defaut;
+
+    const peindreRail = () => {
+      rail.replaceChildren(h('div', { class: 'steps-titre small muted' }, 'Sections du dossier'));
+      SECT.forEach((s, i) => {
+        const o = infos[s]; const sens = M.sensibiliteSections[s];
+        const et = h('div', { class: 'step' + (s === cur ? ' cur' : '') + (o.lisible && o.n ? ' done' : '') + (!o.lisible ? ' lock' : ''),
+          onclick: () => { cur = s; P.sectionChoisie[d.id] = s; peindreRail(); peindrePane(); } },
+          h('span', { class: 'n' }, o.lisible && o.n ? icon('check') : i + 1),
+          h('span', { class: 'step-lbl' }, M.SECTIONS[s]),
+          !o.lisible ? h('span', { class: 'badge grey', title: 'Aucun accès' }, icon('lock'))
+            : o.n ? h('span', { class: 'badge grey', title: o.n + ' réponse(s)' }, o.n)
+              : h('span', { class: 'badge grey', title: 'Section vide' }, '—'),
+          h('span', { class: 'sens ' + sens, title: 'Sensibilité ' + sens }, sens));
+        UI.infobulle(et, () => h('span', null, s + ' — ' + M.SECTIONS[s]), { clic: false, cote: 'bas', classe: 'tip-nav',
+          actif: () => window.matchMedia('(max-width: 1100px)').matches && !et.classList.contains('cur') });
+        rail.append(et);
+      });
+      UI.refreshIcons();
+      const a = rail.querySelector('.step.cur');
+      if (a && window.matchMedia('(max-width: 1100px)').matches) a.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+    };
+    const peindrePane = () => { pane.replaceChildren(P.section(d, cur)); UI.refreshIcons(); };
+    peindreRail(); peindrePane();
+    return h('div', { class: 'wizard' }, rail, pane);
+  };
+
+  /* Nombre de réponses réellement lisibles dans une section : sert la pastille du rail. */
+  P.compteSection = function (d, s) {
+    const p = App.profil;
+    if (!Domaine.droits(p, s).includes('L')) return 0;
+    let n = 0;
+    for (const code of codesOf(s)) {
+      const q = Domaine.Q[code]; if (!q || !Domaine.codeAutorise(p, code)) continue;
+      if (q.widget === 'hidden' || !Domaine.visible(q, d.reponses, d)) continue;
+      if (d.reponses[code] !== undefined) n++;
+    }
+    return n;
+  };
+
+  /* Panneau d'une section : le contenu est affiché d'emblée, sans tiroir à déplier.
+     Après une saisie, `App.render()` reconstruit la fiche : pas de rafraîchissement local. */
   P.section = function (d, s) {
     const p = App.profil; const dr = Domaine.droits(p, s); const sens = M.sensibiliteSections[s];
     const restr = Domaine.restriction(p, s);
-    const blk = h('div', { class: 'secblock' }); const sb = h('div', { class: 'sb' });
-    const ouvert = dr.includes('L') && ['I', 'II', 'XIV'].includes(s);
-    if (!ouvert) sb.classList.add('hidden');
+    const blk = h('div', { class: 'card secblock ouvert' }); const sb = h('div', { class: 'sb' });
     const cle = d.id + ':' + s;
-    blk.append(h('div', { class: 'sh', onclick: () => { sb.classList.toggle('hidden'); if (!sb.classList.contains('hidden') && sb._ouvrir) sb._ouvrir(); } },
-      h('span', { class: 'sens ' + sens }, sens), h('span', { class: 't' }, s + ' — ' + M.SECTIONS[s]),
-      restr ? h('span', { class: 'badge grey' }, 'partiel') : null,
-      dr.length ? h('span', { class: 'tiny muted' }, 'Droits : ' + dr.join(' ')) : h('span', { class: 'badge grey' }, icon('lock'), 'aucun accès')), sb);
+    blk.append(h('div', { class: 'section-head' },
+      h('div', null, h('div', { class: 'tiny muted' }, 'Section ' + s), h('h2', { style: { margin: 0 } }, M.SECTIONS[s])),
+      h('div', { class: 'row', style: { gap: '8px' } },
+        restr ? h('span', { class: 'badge grey' }, 'accès partiel') : null,
+        dr.length ? h('span', { class: 'tiny muted' }, 'Droits : ' + dr.join(' ')) : h('span', { class: 'badge grey' }, icon('lock'), 'aucun accès'),
+        h('span', { class: 'sens ' + sens }, 'Sensibilité ' + sens))), sb);
     if (!dr.includes('L')) { sb.append(h('div', { class: 'locked' }, icon('lock'), 'Cette section n\'est pas accessible à votre structure (matrice d\'habilitations).')); return blk; }
     const masque = sens === 'N3' && !P.reveles.has(cle);
     if (masque) {
@@ -554,7 +633,7 @@
       const et = Form.etapes(d.itineraire); const carte = h('div', { class: 'map-fiche' });
       sb.append(h('div', { class: 'sub-head' }, 'Trajet parcouru — ' + Math.round(kmEtapes(et)).toLocaleString('fr-FR') + ' km, ' + et.length + ' étapes'),
         h('div', { class: 'map-split' }, carte, P.etapesListe(et)));
-      sb._ouvrir = () => Carte.trajet(carte, et);
+      setTimeout(() => Carte.trajet(carte, et), 60);
     }
     if (s === 'I' && d.medias && d.medias.documents && d.medias.documents.length) sb.append(h('div', { class: 'thumbs', style: { marginTop: '8px' } }, d.medias.documents.map((x) => h('img', { class: 'thumb', src: x }))));
     if (!n) sb.append(h('div', { class: 'small muted', style: { padding: '8px 0' } }, 'Aucune donnée renseignée.'));
@@ -655,7 +734,7 @@
     const byId = Object.fromEntries(ds.map((d) => [d.id, d])); const ARR = Object.fromEntries((arrivees || []).map((a) => [a.id, a]));
     const n = (st) => dbl.filter((x) => x.statut === st).length;
     const scoreMax = (x) => Math.max(0, ...(x.candidats || []).map((k) => k.score));
-    const kcard = (t, ic, l, v) => h('div', { class: 'kcard ' + t }, h('span', { class: 'ki' }, icon(ic)), h('div', null, h('div', { class: 'kl' }, l), h('div', { class: 'kv' }, v)));
+    const kcard = (t, ic, l, v) => h('div', { class: 'kcard ' + t }, h('span', { class: 'ki' }, icon(ic)), h('div', null, h('div', { class: 'kl' }, l), h('div', { class: 'kv' }, v)), UI.filigrane(ic));
     const CHAMPS = [['Nom', (d) => d.reponses['IDT-001']], ['Prénoms', (d) => d.reponses['IDT-002']], ['Sexe', (d) => d.reponses['IDT-005']], ['Date de naissance', (d) => d.reponses['IDT-006'] ? UI.fmtDate(d.reponses['IDT-006']) : ''],
       ['Lieu de naissance', (d) => P.fmt(d.reponses['IDT-008'])], ['Téléphone', (d) => (d.reponses['IDT-011'] ? P.fmt(d.reponses['IDT-011']) : '')], ['Pièce d\'identité', (d) => d.reponses['RES-016']], ['Référence OIM', (d) => d.reponses['IDT-013']],
       ['Père', (d) => [d.reponses['FAM-009'], d.reponses['FAM-010']].filter(Boolean).join(' ')], ['Mère', (d) => [d.reponses['FAM-015'], d.reponses['FAM-016']].filter(Boolean).join(' ')],

@@ -62,6 +62,23 @@ Les statistiques, les graphiques, la liste des migrants, les référencements, l
 
 Seul le fond de carte (OpenStreetMap, rendu OSM France, libre et sans clé) nécessite internet ; sans connexion, les contours des pays, les routes et les statistiques s'affichent quand même.
 
+## Installation sur tablette (application installable, hors connexion)
+
+L'application est une **PWA** : elle s'installe comme une application et démarre sans réseau.
+
+1. Ouvrir l'adresse dans Chrome ou Edge, puis **Installer** (icône dans la barre d'adresse, ou menu ⋮ > Installer). Sur iPad : Safari > Partager > **Sur l'écran d'accueil**.
+2. Au premier chargement, les 3,7 Mo de l'application (code, polices, référentiels, contours de carte) sont mis en cache. Ensuite, elle démarre sans réseau.
+3. Seul le fond de carte OpenStreetMap exige internet ; il n'est jamais mis en cache (politique d'usage des tuiles). Sans réseau, contours, routes et statistiques s'affichent quand même.
+4. Sur tablette et téléphone (sous 992 px), la barre latérale laisse place à une **barre d'onglets en bas**, à portée du pouce. Le cinquième onglet, « Menu », ouvre la navigation complète.
+
+### Après toute modification d'un fichier de `web/`
+
+```
+python3 tools/gen_sw.py
+```
+
+`web/sw.js` est **généré**. Son nom de cache dérive de l'empreinte des fichiers : sans régénération, le service worker continue de servir l'ancienne version. Une fois régénéré, les navigateurs déjà ouverts affichent une barre « Une nouvelle version est prête — Recharger ».
+
 ## Brancher la base partagée Supabase (à faire ensemble)
 
 1. Créer le projet Supabase, puis exécuter `supabase/schema.sql` dans l'éditeur SQL.

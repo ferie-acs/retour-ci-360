@@ -14,20 +14,41 @@
 
   N.marquerLu = async function (a, p) { if ((a.lu_par || []).includes(p.id)) return; a.lu_par = [...(a.lu_par || []), p.id]; await Store.db.upsert('annonces', a); };
 
-  /* Carte d'une annonce */
-  N.carte = function (a, p, compact, arrivees) {
-    const [ic, t] = CATS[a.categorie] || ['megaphone', 'o']; const lu = (a.lu_par || []).includes(p.id);
+  /* Carte d'une annonce : en-tête (pastille, titre, étiquettes, date), corps, puis un pied
+     unique qui porte TOUTES les actions — leur position ne dépend plus de la hauteur du texte. */
+  N.carte = function (a, p, arrivees) {
+    const [ic, t] = CATS[a.categorie] || ['megaphone', 'o'];
+    const lu = (a.lu_par || []).includes(p.id);
+    const ton = a.importance === 'Urgente' ? 'r' : a.importance === 'Importante' ? 'o' : t;
+    /* Le cadre ne dit que le niveau — rouge urgente, orange importante, bleu simplement non lue.
+       La catégorie reste portée par la pastille d'icône, pour éviter un cadre arc-en-ciel. */
+    const cadre = a.importance === 'Urgente' ? 'r' : a.importance === 'Importante' ? 'o' : 'b';
     const arr = a.arrivee_id && (arrivees || []).find((x) => x.id === a.arrivee_id);
-    const el = h('div', { class: 'annonce' + (lu ? '' : ' nonlue') + (a.importance === 'Urgente' ? ' urgente' : '') },
-      h('span', { class: 'ticon lg ' + t }, icon(ic)),
-      h('div', { class: 'grow', style: { minWidth: 0 } },
-        h('div', { class: 'row', style: { gap: '6px' } }, a.epingle ? h('span', { class: 'badge accent' }, icon('pin'), 'Épinglée') : null, h('span', { class: 'badge solid ' + IMP[a.importance] }, a.importance), h('span', { class: 'badge grey' }, a.categorie), lu ? null : h('span', { class: 'badge solid info' }, 'Nouveau')),
-        h('h3', { class: 'annonce-t' }, a.titre),
-        h('div', { class: 'annonce-m' + (compact ? ' clamp' : '') }, a.message),
-        arr ? h('a', { class: 'ref-chip', href: p.espace === 'portail' ? '#/portail/arrivee/' + arr.id : null, style: { marginTop: '8px' } }, icon(arr.type === 'Voie terrestre' ? 'bus' : 'plane-landing'), arr.code + ' — ' + arr.type + ' ' + (arr.numero || '') + ', ' + (arr.statut === 'Prévue' ? 'prévue le ' : '') + UI.fmtDate(arr.date_reelle || arr.date_prevue, true) + ' · ' + (arr.nb_attendus || (arr.manifeste || []).length) + ' personne(s)') : null,
-        h('div', { class: 'row tiny muted', style: { gap: '6px', marginTop: '8px' } }, Admin.logo(a.structure, 18), (a.auteur || '') + ' (' + a.structure + ') · ' + UI.ago(a.created_at) + ' · destinataires : ' + cibles(a) + ' · ' + (a.lu_par || []).length + ' lecture(s)')),
-      !lu ? h('button', { class: 'btn sm', title: 'Marquer comme lu', onclick: async (e) => { e.stopPropagation(); await N.marquerLu(a, p); App.render(); } }, icon('check')) : null);
-    return el;
+    const gerable = (a.structure === p.structure && (p.role === 'admin' || p.role === 'superviseur' || a.auteur === p.nom)) || p.role === 'admin';
+    const maj = async () => { await Store.db.upsert('annonces', a); App.render(); };
+    return h('article', { class: 'annonce-card card ton-' + cadre + (lu ? '' : ' nonlue') },
+      h('div', { class: 'annonce-head' },
+        h('span', { class: 'ticon lg ' + ton }, icon(ic)),
+        h('div', { class: 'grow', style: { minWidth: 0 } },
+          h('h3', { class: 'annonce-t' }, a.titre),
+          h('div', { class: 'annonce-badges' },
+            a.importance !== 'Normale' ? h('span', { class: 'badge ' + (a.importance === 'Urgente' ? 'danger' : 'warn') }, a.importance) : null,
+            h('span', { class: 'badge grey' }, a.categorie),
+            a.epingle ? h('span', { class: 'badge accent' }, icon('pin'), 'Épinglée') : null),
+          h('p', { class: 'annonce-m' }, a.message),
+          arr ? h('a', { class: 'ref-chip', href: p.espace === 'portail' ? '#/portail/arrivee/' + arr.id : null },
+            icon(arr.type === 'Voie terrestre' ? 'bus' : 'plane-landing'),
+            arr.code + ' — ' + arr.type + ' ' + (arr.numero || '') + ', ' + (arr.statut === 'Prévue' ? 'prévue le ' : '') + UI.fmtDate(arr.date_reelle || arr.date_prevue, true) + ' · ' + (arr.nb_attendus || (arr.manifeste || []).length) + ' personne(s)') : null),
+        h('time', { class: 'annonce-date tiny muted' }, UI.ago(a.created_at))),
+      h('div', { class: 'annonce-pied' },
+        h('div', { class: 'annonce-meta tiny muted' }, Admin.logo(a.structure, 18),
+          h('span', null, (a.auteur || '') + ' (' + a.structure + ')'),
+          h('span', { class: 'sep' }, '·'), h('span', null, cibles(a)),
+          h('span', { class: 'sep' }, '·'), h('span', null, (a.lu_par || []).length + ' lecture(s)')),
+        h('div', { class: 'annonce-actions' },
+          lu ? null : h('button', { class: 'btn sm a-lu', onclick: async () => { await N.marquerLu(a, p); App.render(); } }, icon('check'), 'Marquer comme lu'),
+          gerable ? h('button', { class: 'btn sm a-pin', onclick: () => { a.epingle = !a.epingle; maj(); } }, icon(a.epingle ? 'pin-off' : 'pin'), a.epingle ? 'Désépingler' : 'Épingler') : null,
+          gerable ? h('button', { class: 'btn sm a-arch', onclick: async () => { a.archive = true; await Store.audit('Annonce archivée', a.titre, ''); maj(); } }, icon('archive'), 'Archiver') : null)));
   };
 
   /* Page « Canal de diffusion » (portail et tablette) */
@@ -38,9 +59,7 @@
       const rows = toutes.filter((a) => N.filtre === 'toutes' || (N.filtre === 'nonlues' ? !(a.lu_par || []).includes(p.id) : a.categorie === N.filtre));
       list.innerHTML = '';
       if (!rows.length) list.append(h('div', { class: 'card' }, h('div', { class: 'empty' }, icon('megaphone'), h('div', null, 'Aucune annonce.'))));
-      rows.forEach((a) => list.append(h('div', { class: 'card' }, N.carte(a, p, false, arrivees), (a.structure === p.structure && (p.role === 'admin' || p.role === 'superviseur' || a.auteur === p.nom)) || p.role === 'admin' ? h('div', { class: 'row', style: { gap: '6px', marginTop: '10px', justifyContent: 'flex-end' } },
-        h('button', { class: 'btn sm', onclick: async () => { a.epingle = !a.epingle; await Store.db.upsert('annonces', a); App.render(); } }, icon(a.epingle ? 'pin-off' : 'pin'), a.epingle ? 'Désépingler' : 'Épingler'),
-        h('button', { class: 'btn sm', onclick: async () => { a.archive = true; await Store.db.upsert('annonces', a); await Store.audit('Annonce archivée', a.titre, ''); App.render(); } }, icon('archive'), 'Archiver')) : null)));
+      rows.forEach((a) => list.append(N.carte(a, p, arrivees)));
       UI.refreshIcons();
     };
     const nl = N.nonLues(p, annonces).length;
@@ -75,13 +94,22 @@
     } }] }).el.style.maxWidth = '760px';
   };
 
-  /* Bandeau du tableau de bord : annonces importantes ou urgentes non lues */
-  N.bandeau = function (p, annonces, arrivees) {
+  /* Bandeau du tableau de bord : un rappel d'une ligne, la lecture se fait sur la page.
+     L'importance est portée par la pastille d'icône, jamais par le fond de la carte. */
+  N.bandeau = function (p, annonces) {
     const a = N.nonLues(p, annonces).filter((x) => x.importance !== 'Normale');
     if (!a.length) return null;
+    const urgent = a.some((x) => x.importance === 'Urgente');
     const lien = p.espace === 'portail' ? '#/portail/annonces' : '#/agent/annonces';
-    return h('div', { class: 'card annonce-bandeau', style: { marginBottom: '20px' } }, h('div', { class: 'row between', style: { marginBottom: '10px' } }, h('b', { class: 'row', style: { gap: '8px' } }, icon('megaphone'), 'Canal de diffusion — ' + a.length + ' annonce(s) importante(s) non lue(s)'), h('a', { class: 'btn sm', href: lien }, 'Tout voir')),
-      a.slice(0, 2).map((x) => N.carte(x, p, true, arrivees)));
+    const n = a.length;
+    return h('div', { class: 'annonce-bandeau ton-' + (urgent ? 'r' : 'o') },
+      h('span', { class: 'ticon ' + (urgent ? 'r' : 'o') }, icon('megaphone')),
+      h('span', { class: 'annonce-bandeau-txt' },
+        h('b', null, n + (urgent ? ' annonce(s) urgente(s)' : ' annonce(s) importante(s)') + ' non lue(s)'),
+        h('span', { class: 'sep' }, ' — '),
+        a.slice(0, 3).map((x, i) => [i ? h('span', { class: 'sep' }, ' · ') : null, h('span', { class: 'ti' }, x.titre)])),
+      h('button', { class: 'btn sm', onclick: async () => { for (const x of a) await N.marquerLu(x, p); App.render(); } }, icon('check-check'), 'Tout marquer comme lu'),
+      h('a', { class: 'btn sm accent-t', href: lien }, 'Tout voir'));
   };
   window.Annonces = N;
 })();

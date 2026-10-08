@@ -320,6 +320,45 @@
     const ap = (o) => db.upsert('approbations', { id: UI.uuid(), statut: 'En attente', created_at: new Date().toISOString(), ...o });
     // validations de dossiers en attente (dossiers récents)
     for (const d of crees.filter((x) => !x.valide).slice(0, 7)) await ap({ type: 'Validation du dossier', dossier_id: d.id, identifiant: d.identifiant, structure: d.structure, demande_par: d.agent, motif: 'Dossier synchronisé depuis la tablette ' + d.tablette, created_at: d.synced_at });
+    /* ---------- Première phase ONECI en attente de reprise par la DGIE ----------
+       L'ONECI tient l'état civil : il ouvre le dossier (sections I à V), puis passe la main.
+       Tant que personne ne reprend, le dossier n'existe PAS dans la base des dossiers — il vit
+       dans la table « relais ». C'est ce que la colonne « Identification » du pipeline montre. */
+    const AGENT_ONECI = { nom: 'Adjoua Kouassi', structure: 'ONECI', tablette: 'TAB-ONECI-02', site: 'Aéroport FHB, Abidjan' };
+    const EN_COURS = [
+      { nom: 'KOUADIO', prenoms: 'Affoué Nadège', sexe: 'Femme', naiss: '1994-03-12', prov: 'Libye', heures: 3, vers: 'DGIE' },
+      { nom: 'BAMBA', prenoms: 'Souleymane', sexe: 'Homme', naiss: '1989-11-02', prov: 'Tunisie', heures: 9, vers: 'DGIE' },
+      { nom: 'ZADI', prenoms: 'Gnoan Prisca', sexe: 'Femme', naiss: '2007-06-25', prov: 'Niger', heures: 28, vers: 'DGIE' },
+      { nom: 'OUATTARA', prenoms: 'Lassina', sexe: 'Homme', naiss: '1998-01-30', prov: 'Algérie', heures: 51, vers: 'DGIE' },
+      { nom: 'TANO', prenoms: 'Ama Sylvie', sexe: 'Femme', naiss: '1992-09-17', prov: 'Maroc', heures: 5, vers: 'OIM' },
+    ];
+    const arrEnCours = arrivees.find((a) => a.statut === 'En cours') || arrivees[0];
+    let seqOneci = 0;
+    for (const x of EN_COURS) {
+      seqOneci += 1;
+      const quand = new Date(Date.now() - x.heures * 3600000).toISOString();
+      const tmp = `TMP-${AGENT_ONECI.tablette}-${String(seqOneci).padStart(4, '0')}`;
+      /* Dossier partiel : seules les sections d'identité sont renseignées. */
+      const dossier = {
+        id: UI.uuid(), statut: 'Relayé', structure: AGENT_ONECI.structure, agent: AGENT_ONECI.nom,
+        site: AGENT_ONECI.site, tablette: AGENT_ONECI.tablette, identifiantProvisoire: tmp,
+        created_at: quand, updated_at: quand, arrivee_id: arrEnCours ? arrEnCours.id : null, passager_id: null,
+        resume: { nom: x.nom, prenoms: x.prenoms, sexe: x.sexe, provenance: x.prov },
+        reponses: { 'ENT-001': quand, 'ENT-002': AGENT_ONECI.site, 'ENT-003': AGENT_ONECI.nom, 'ENT-004': 'Enquêteur',
+          'ENT-005': AGENT_ONECI.structure, 'ENT-009': 'Oui',
+          'IDT-001': x.nom, 'IDT-002': x.prenoms, 'IDT-005': x.sexe, 'IDT-006': x.naiss },
+        medias: { documents: [] }, drapeaux: {},
+        contributions: [{ structure: AGENT_ONECI.structure, agent: AGENT_ONECI.nom, tablette: AGENT_ONECI.tablette, sections: ['I', 'II', 'III', 'IV', 'V'], date: quand }],
+        historique: [{ date: quand, par: AGENT_ONECI.nom, structure: AGENT_ONECI.structure, action: 'Identification et biométrie réalisées' },
+          { date: quand, par: AGENT_ONECI.nom, structure: AGENT_ONECI.structure, action: 'Relais passé à ' + x.vers + ' (sections I, II, III, IV, V renseignées)' }],
+      };
+      await db.upsert('relais', { id: dossier.id, dossier, nom: x.nom + ' ' + x.prenoms,
+        de: AGENT_ONECI.structure, de_agent: AGENT_ONECI.nom, de_tablette: AGENT_ONECI.tablette,
+        vers: x.vers, sections: ['I', 'II', 'III', 'IV', 'V'],
+        note: 'État civil vérifié et biométrie prise. Reste le parcours migratoire et la vulnérabilité.',
+        arrivee_id: dossier.arrivee_id, passager_id: null, statut: 'En attente', created_at: quand });
+    }
+
     const ord = crees.filter((d) => !d.cas && d.valide);
     // transfert reçu par Emploi Jeune (déjà validé par le superviseur)
     const t1 = ord.find((d) => d.structure === 'OIM');

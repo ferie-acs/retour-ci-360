@@ -4,7 +4,7 @@
 (function () {
   const { h, icon } = UI; const M = window.METIER;
   const PI = { etat: null };
-  const kcard = (t, ic, label, val, sous) => h('div', { class: 'kcard ' + t }, h('span', { class: 'ki' }, icon(ic)), h('div', null, h('div', { class: 'kl' }, label), h('div', { class: 'kv' }, val), sous ? h('div', { class: 'tiny', style: { opacity: 0.9 } }, sous) : null));
+  const kcard = (t, ic, label, val, sous) => h('div', { class: 'kcard ' + t }, h('span', { class: 'ki' }, icon(ic)), h('div', null, h('div', { class: 'kl' }, label), h('div', { class: 'kv' }, val), sous ? h('div', { class: 'tiny', style: { opacity: 0.9 } }, sous) : null), UI.filigrane(ic));
   const carteC = (ic, t, titre, droite, ...corps) => h('div', { class: 'card p0' }, h('div', { class: 'card-h' }, h('h3', { class: 'title' }, h('span', { class: 'ticon ' + t }, icon(ic)), titre), droite || null), ...corps);
   const WIDGETS = ['single', 'yesno', 'multi', 'country', 'locality', 'region', 'nationality', 'number', 'month', 'provenance'];
   const DERIVEES = {
@@ -58,7 +58,7 @@
     const itemsRef = Object.entries(statutsRef).map(([label, v]) => ({ label, v, pct: Math.round((100 * v) / (recus.length || 1)) }));
     c.append(h('div', { class: 'grid g2', style: { marginBottom: '20px' } },
       carteC('users', 'b', 'Équipe de la structure (' + equipe.length + ')', null, tblEq),
-      carteC('send', 'v', 'Référencements reçus par statut', null, h('div', { class: 'card-b' }, itemsRef.length ? Charts.hbarres({ items: itemsRef, couleur: '#7C5CC4', largeur: 520 }) : h('div', { class: 'empty' }, 'Aucun référencement reçu.')))));
+      carteC('send', 'v', ['Référencements reçus par statut', UI.aide('Répartition des référencements adressés à votre structure selon leur état d\'avancement : Émis, Reçu, Accepté, En cours de prise en charge, Clôturé, Refusé. Seuls les référencements dont votre structure est destinataire sont comptés — pas ceux qu\'elle a émis.')], null, h('div', { class: 'card-b' }, itemsRef.length ? Charts.hbarres({ items: itemsRef, couleur: '#4B3F8C', largeur: 520 }) : h('div', { class: 'empty' }, 'Aucun référencement reçu.')))));
 
     // ---------- Profilage ----------
     const st = PI.etat || (PI.etat = { perimetre: 'national', v: 'EDU-001', x: '_age', f: {}, vue: 'graphe' });
@@ -100,7 +100,12 @@
       const exportLignes = () => lignes.map((l, i) => (i ? l.map((v, j) => (j && typeof v === 'number' ? masque(v) : v)) : l));
       const zone = h('div');
       const nominatif = st.perimetre === 'structure';
-      zone.append(carteC('chart-column', 'o', titre, h('div', { class: 'row' }, h('div', { class: 'periods' }, [['graphe', 'Graphique'], ['tableau', 'Tableau']].map(([k, l]) => h('button', { class: k === st.vue ? 'on' : '', onclick: () => { st.vue = k; calc(); } }, l))),
+      const aideProfilage = 'Effectifs de migrants pour chaque réponse à « ' + libelle(st.v) + ' »'
+        + (st.x ? ', ventilés par « ' + libelle(st.x) + ' » (une couleur par groupe, 10 groupes au maximum)' : '')
+        + '. Périmètre : ' + (st.perimetre === 'national' ? 'base nationale, agrégats anonymes uniquement' : 'dossiers de ' + p.structure)
+        + '. Calculé sur ' + rep.length + ' migrant(s) ayant répondu, parmi ' + base.length + ' retenus par les filtres'
+        + (!dgie && st.perimetre === 'national' ? '. Les effectifs inférieurs à ' + UI.PARAMS.secret + ' sont masqués et comptés comme zéro dans le graphique' : '') + '.';
+      zone.append(carteC('chart-column', 'o', [titre, UI.aide(aideProfilage)], h('div', { class: 'row' }, h('div', { class: 'periods' }, [['graphe', 'Graphique'], ['tableau', 'Tableau']].map(([k, l]) => h('button', { class: k === st.vue ? 'on' : '', onclick: () => { st.vue = k; calc(); } }, l))),
         Export.menu({ compact: true, titre: 'Profilage — ' + titre, sousTitre: (st.perimetre === 'national' ? 'Base nationale, agrégats anonymes' : 'Dossiers de ' + p.structure) + ' — ' + base.length + ' migrant(s)', lignes: exportLignes, noeud: () => zone, fichier: 'profilage_' + st.v })),
         h('div', { class: 'card-b' }, h('div', { class: 'small muted', style: { marginBottom: '10px' } }, rep.length + ' réponse(s) sur ' + base.length + ' migrant(s)' + (nonRep ? ' · ' + nonRep + ' sans réponse' : '') + (!dgie && st.perimetre === 'national' ? ' · effectifs inférieurs à ' + UI.PARAMS.secret + ' masqués' : '')), graphe)));
       if (nominatif) {
