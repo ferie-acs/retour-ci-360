@@ -20,6 +20,16 @@
   };
   const h = UI.h;
   UI.icon = (name, cls) => h('i', { 'data-lucide': name, class: cls || '' });
+  /* Drapeau d'un pays (code ISO 3166-1 alpha-2) : case de la planche locale img/drapeaux.png
+     (bibliothèque flag-icons, licence MIT), dans l'ordre du référentiel des pays. Aucun emoji. */
+  UI.drapeau = function (code) {
+    const pays = (window.REF && window.REF.pays) || []; const i = pays.findIndex((p) => p.c === code);
+    if (i < 0) return null;
+    const e = h('span', { class: 'drap', role: 'img', 'aria-label': pays[i].n, title: pays[i].n });
+    e.style.backgroundPosition = `${-(i % 16) * 20}px ${-Math.floor(i / 16) * 15}px`;
+    return e;
+  };
+  UI.drapeauPays = (nom) => { const p = ((window.REF && window.REF.pays) || []).find((x) => x.n === nom); return p ? UI.drapeau(p.c) : null; };
 
   /* Filigrane : l'icône de l'indicateur reprise en grand et très pâle, en bas à droite de la carte.
      Purement décorative — elle ne porte jamais d'information et reste sous le texte. */
@@ -129,7 +139,7 @@
         btn.append(arr.length ? h('span', { class: 'val' }, h('span', { class: 'tags' }, arr.map((v) => h('span', { class: 'tag' }, labelOf(v))))) : h('span', { class: 'val ph' }, placeholder || 'Choisir…'));
       } else {
         const it = items.find((i) => i.value === sel);
-        btn.append(it ? h('span', { class: 'val' }, it.flag ? it.flag + '  ' : '', it.label) : h('span', { class: 'val ph' }, placeholder || 'Choisir…'));
+        btn.append(it ? h('span', { class: 'val' }, it.flag ? [UI.drapeau(it.flag), ' '] : '', it.label) : h('span', { class: 'val ph' }, placeholder || 'Choisir…'));
       }
       btn.append(UI.icon('chevrons-up-down')); UI.refreshIcons();
     }
@@ -144,7 +154,7 @@
         const on = multiple ? sel.has(it.value) : sel === it.value;
         const opt = h('div', { class: 'dd-opt' + (on ? ' sel' : ''), onclick: (e) => { e.stopPropagation(); pick(it.value); } },
           multiple ? UI.icon(on ? 'square-check' : 'square') : null,
-          it.flag ? h('span', { class: 'flag' }, it.flag) : null, h('span', null, render ? render(it) : it.label), it.right ? h('span', { class: 'right' }, it.right) : null);
+          it.flag ? UI.drapeau(it.flag) : null, h('span', null, render ? render(it) : it.label), it.right ? h('span', { class: 'right' }, it.right) : null);
         list.append(opt);
       }
       UI.refreshIcons();

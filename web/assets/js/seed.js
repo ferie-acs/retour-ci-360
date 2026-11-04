@@ -313,6 +313,96 @@
     }
   }
 
+  /* Cas de démonstration des fonctions du cahier des charges v0.4 : retours successifs, vérification ONECI,
+     consentement retiré, conflits de synchronisation, localités à géolocaliser, annulation d'un rattachement. */
+  async function seedComplements(db, crees, arrivees) {
+    const dbl = await db.list('doublons'); const pris = new Set();
+    dbl.forEach((x) => { pris.add(x.dossier_id); (x.candidats || []).forEach((k) => pris.add(k.id)); });
+    const tous = await db.listDossiers(); const frais = (d) => tous.find((x) => x.id === d.id) || d;
+    const libres = crees.filter((d) => !d.cas && !pris.has(d.id) && !(d.contributions || []).length && d.arrivee_id !== 'arr-live' && (d.etat_suivi || 'Ouvert') === 'Ouvert' && d.reponses['IDT-006']).map(frais);
+    const prendre = (f) => { const i = libres.findIndex(f); return i < 0 ? null : libres.splice(i, 1)[0]; };
+    const sup = M.PROFILS.find((x) => x.id === 'sup-dgie'); const oim = M.PROFILS.find((x) => x.id === 'agent-oim'); const dg = M.PROFILS.find((x) => x.id === 'agent-dgie');
+    const h0 = (d, date, p, action) => d.historique.push({ date, par: p.nom || p.agent, structure: p.structure, action });
+    const ag = (d) => (Date.now() - new Date(d.created_at)) / 86400000;
+
+    /* 1. Retours successifs : un dossier qui compte déjà deux retours */
+    const F = prendre((d) => d.structure === 'OIM' && ag(d) !== 0);
+    if (F) {
+      const actuel = Cycle.episodes(F)[0]; const ancien = JSON.parse(JSON.stringify(actuel));
+      Object.assign(ancien, { n: 1, id: UI.uuid(), created_at: '2024-03-12T10:20:00.000Z', date_retour: '2024-03-12', type_retour: 'voie terrestre', provenance: 'Niger', arrivee_code: 'ARR-2024-0007', site: 'Poste frontière de Ouangolodougou', structure: 'OIM', agent: oim.nom,
+        itineraire: { ci: ['Bouaké', 'Ouangolodougou'].map(loc).filter(Boolean), pays: [pays('BF', ['Bobo-Dioulasso', 'Ouagadougou']), pays('NE', ['Niamey', 'Agadez'])] } });
+      Object.assign(ancien.reponses, { 'IDT-019': '2024-03-12', 'IDT-017': 'voie terrestre', 'IDT-016': 'Retour volontaire assisté', 'ENT-001': ancien.created_at, 'RES-004': { pays: 'Niger', ville: 'Agadez' }, 'PAR-035': 'Niger', 'PAR-001': '2023-05', 'SUI-002': 'Suivi standard' });
+      actuel.n = 2;
+      F.episodes = [ancien, actuel];
+      F.historique.unshift({ date: ancien.created_at, par: oim.nom, structure: 'OIM', action: 'Entretien réalisé au poste frontière de Ouangolodougou (premier retour, depuis le Niger)' });
+      h0(F, F.synced_at, F, 'Épisode de retour n° 2 rattaché (retour du ' + UI.fmtDate(F.reponses['IDT-019']) + ')');
+      await db.upsertDossier(F);
+    }
+    /* … et une personne déjà enregistrée attendue sur le vol affrété du jour : l'agent la reconnaîtra */
+    const E = prendre((d) => d.structure === 'DGIE');
+    const lv = arrivees.find((a) => a.id === 'arr-live');
+    const px = lv && lv.manifeste.filter((x) => x.statut === 'Attendu').slice(-1)[0];
+    if (E && px) {
+      Object.assign(px, { nom: E.reponses['IDT-001'], prenoms: E.reponses['IDT-002'], sexe: E.reponses['IDT-005'], date_naissance: E.reponses['IDT-006'],
+        statut: 'En attente', ticket: Math.max(0, ...lv.manifeste.map((y) => y.ticket || 0)) + 1, heure_arrivee: jours(0.02) });
+      await db.upsert('arrivees', lv);
+    }
+
+    /* 2. Vérification ONECI : identités confirmées, une identité non confirmée en attente d'examen */
+    const piece = (d, n, statut, motif, jours0) => {
+      Object.assign(d.reponses, { 'RES-014': 'Oui', 'RES-015': 'CNI', 'RES-016': n });
+      d.verifications_oneci = [{ id: UI.uuid(), date: jours(jours0), piece: n, nature: 'CNI', transmis: Identite.CHAMPS_TRANSMIS, par: d.agent, structure: d.structure, tentative: 1, statut, motif }];
+      h0(d, jours(jours0), d, 'Vérification d\'identité ONECI (CNI ' + n + ') : ' + statut);
+    };
+    for (const [i, n] of ['CI004517231', 'CI008803642', 'CI002291405'].entries()) { const d = prendre((x) => x.reponses['RES-014'] === 'Oui' && ag(x) > 5 + i); if (d) { piece(d, n, 'Confirmée', 'Identité conforme au registre (simulation).', ag(d) - 0.1); await db.upsertDossier(d); } }
+    const NC = prendre((x) => x.structure === 'DGIE' && ag(x) > 2);
+    if (NC) { piece(NC, 'CI006120587', 'Non confirmée', 'La date de naissance déclarée diffère de celle du registre (simulation).', Math.max(0.5, ag(NC) - 0.2)); await db.upsertDossier(NC); }
+
+    /* 3. Consentement à la photo retiré quelques jours après l'entretien */
+    const R = prendre((x) => x.structure === 'DGIE' && ag(x) > 20);
+    if (R) {
+      R.consentements = Cycle.consentements(R).map((c) => ({ ...c, reconstitue: false }));
+      const c = R.consentements.find((x) => x.finalite === 'ENT-011');
+      if (c) { c.retrait = { date: jours(ag(R) - 6).slice(0, 10), enregistre_le: jours(ag(R) - 6), mode: 'Déclaration orale', motif: 'Ne souhaite plus figurer en photo sur les documents.', par: sup.nom + ' (DGIE)' }; R.retraits = ['ENT-011'];
+        h0(R, jours(ag(R) - 6), sup, 'Retrait de consentement (prise de photo) daté du ' + UI.fmtDate(c.retrait.date) + ' : traitements restreints sur le serveur'); await db.upsertDossier(R); }
+    }
+
+    /* 4. Conflits de synchronisation : tablette OIM restée hors connexion pendant que le portail corrigeait le dossier */
+    const G = prendre((x) => x.structure === 'DGIE' && ag(x) > 3);
+    if (G) {
+      const ancienTel = G.reponses['IDT-011']; const nouveauTel = { ind: '+225', pays: 'CI', num: '05 46 21 87 30' };
+      G.reponses['IDT-011'] = { ind: '+225', pays: 'CI', num: '01 72 40 55 19' };
+      h0(G, jours(2), M.PROFILS.find((x) => x.id === 'gc-ej'), 'Section II complétée (IDT-011) : numéro mis à jour lors d\'un appel de suivi');
+      const conflit = (code, serveur, entrant, origine, j) => db.upsert('conflits', { id: UI.uuid(), dossier_id: G.id, identifiant: G.identifiant, structure: G.structure, code, section: Domaine.Q[code].sect, libelle: Domaine.Q[code].label, origine, serveur, entrant, statut: 'À arbitrer', created_at: jours(j) });
+      await conflit('IDT-011', { v: G.reponses['IDT-011'], par: 'Koffi Brou', structure: 'EJ', date: jours(2) }, { v: nouveauTel, par: oim.nom, structure: 'OIM', date: jours(3), source: 'Tablette ' + oim.tablette + ' — hors connexion pendant 3 jours' }, 'Modification hors connexion : la tablette a synchronisé une valeur saisie avant la correction du portail', 1.5);
+      await conflit('RES-008', { v: G.reponses['RES-008'] || ['Chez la famille'], par: G.agent, structure: 'DGIE', date: G.synced_at }, { v: ['Location'], par: oim.nom, structure: 'OIM', date: jours(3), source: 'Tablette ' + oim.tablette + ' — hors connexion pendant 3 jours' }, 'Modification hors connexion : deux saisies différentes de la même réponse', 1.5);
+      h0(G, jours(1.5), { nom: 'Plateforme', structure: '' }, 'Conflits sur IDT-011 et RES-008 soumis au superviseur');
+      void ancienTel; await db.upsertDossier(G);
+    }
+
+    /* 5. Localités saisies hors référentiel, en attente de géolocalisation */
+    for (const [code, n] of [['RES-005', 'Kpangbassou'], ['RES-005', 'Assoumoukro'], ['PAR-002', 'Kpangbassou'], ['RES-013', 'Djémissou']]) {
+      const d = prendre((x) => ag(x) > 1); if (!d) continue;
+      d.reponses[code] = n; Domaine.calculs(d); h0(d, d.created_at, d, 'Localité « ' + n + ' » saisie hors référentiel (' + code + ') : à géolocaliser');
+      await db.upsertDossier(d);
+    }
+
+    /* 6. Rattachement confirmé suivi d'interventions : de quoi démontrer son annulation */
+    const conf = dbl.find((x) => x.statut === 'Confirmé, à rattacher');
+    if (conf) {
+      const lst = await db.listDossiers(); const sec = lst.find((x) => x.id === conf.dossier_id); const pri = sec && lst.find((x) => x.identifiant === sec.rattache_a);
+      if (sec && pri) {
+        Object.assign(conf, { principal_id: pri.id, avant: { etat_suivi: 'Ouvert', rattache_a: null } }); await db.upsert('doublons', conf);
+        const gc = M.PROFILS.find((x) => x.id === 'gc-agefop');
+        pri.suivis = (pri.suivis || []).concat([{ id: UI.uuid(), date: jours(0.6), type: 'Appel téléphonique', note: 'Appel au numéro du dossier rattaché : la personne indique n\'avoir jamais séjourné au Maroc', par: sup.nom, structure: 'DGIE' }]);
+        h0(pri, jours(0.6), sup, 'Suivi enregistré : appel téléphonique');
+        await db.upsertDossier(pri);
+        await db.upsert('referencements', { id: UI.uuid(), dossier_id: pri.id, identifiant: pri.identifiant, beneficiaire: pri.resume.nom + ' ' + pri.resume.prenoms, emetteur: 'DGIE', destinataire: 'AGEFOP', type_service: 'INS', motif: 'Formation qualifiante demandée lors de l\'appel de suivi', statut: 'Émis', created_at: jours(0.5), echeance_reception: jours(-1.5), historique: [{ date: jours(0.5), statut: 'Émis', par: 'DGIE' }] });
+        void gc;
+      }
+    }
+  }
+
   async function completer(db, crees, arrivees, r, pick) {
     for (const s of SITES) await db.upsert('sites', { ...s, statut: 'Actif', created_at: jours(200) });
     for (const a of arrivees) await db.upsert('arrivees', a);
@@ -422,6 +512,7 @@
       await db.upsert('arrivees', lv);
     }
     await seedDoublons(db, crees);
+    await seedComplements(db, crees, arrivees);
     await db.upsert('rapports', { id: UI.uuid(), nom: 'Retours du mois par sexe', indicateur: 'vol', ventilation: 'sexe', filtres: {}, format: 'pdf', periodicite: 'Mensuelle', jour: 1, destinataires: ['DGIE', 'OIM'], actif: true, cree_par: 'Administration générale', created_at: jours(60), historique: [{ date: jours(5), statut: 'Envoyé', fichier: 'indicateur_vol.pdf' }, { date: jours(35), statut: 'Envoyé', fichier: 'indicateur_vol.pdf' }] });
     await db.upsert('rapports', { id: UI.uuid(), nom: 'Pays de provenance (hebdomadaire)', indicateur: 'provenance', ventilation: '', filtres: {}, format: 'xlsx', periodicite: 'Hebdomadaire', jour: 1, destinataires: ['DGIE'], actif: true, cree_par: 'Mariam Touré', created_at: jours(30), historique: [{ date: jours(3), statut: 'Envoyé', fichier: 'indicateur_provenance.xlsx' }] });
   }

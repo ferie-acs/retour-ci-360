@@ -14,7 +14,7 @@ Données entièrement fictives. Règles affichées = propositions soumises à l'
 
 ## Charte graphique
 
-Couleurs relevées sur le logo officiel : bleu #014A96, vert #4EA738, orange #FE7701. Logo et emblème dans `web/assets/img/`. Police Nunito (licence SIL OFL) embarquée dans `web/assets/vendor/fonts/` pour fonctionner sans internet. Mise en page de type tableau de bord d'administration (barre latérale, en-tête avec recherche, indicateurs, cartes), écrite pour le projet sans reprise de code d'un modèle commercial.
+Couleurs relevées sur le logo officiel : bleu #014A96, vert #4EA738, orange #FE7701. Logo et emblème dans `web/assets/img/`. Police Nunito (licence SIL OFL) embarquée dans `web/assets/vendor/fonts/` pour fonctionner sans internet. Les drapeaux des pays sont des images locales (`web/assets/img/drapeaux.png`, bibliothèque flag-icons sous licence MIT), jamais des emojis ; la planche se régénère avec `tools/gen_drapeaux.js`. Mise en page de type tableau de bord d'administration (barre latérale, en-tête avec recherche, indicateurs, cartes), écrite pour le projet sans reprise de code d'un modèle commercial.
 
 ## Exportation et logos
 
@@ -53,6 +53,17 @@ Les statistiques, les graphiques, la liste des migrants, les référencements, l
   - sections sensibles N3 exploitables seulement si la matrice d'habilitations les ouvre à la structure.
 - **Doublons** : dix cas fictifs (règles R1 à R5, homonymes, cas déjà confirmé, cas déjà écarté), comparés champ par champ. La décision est motivée et le dossier est rattaché, jamais fusionné automatiquement.
 - **Données ouvertes** (`#/donnees-ouvertes`, sans connexion) : agrégats, effectifs inférieurs à 5 masqués, téléchargement CSV et Excel.
+
+## Fonctions alignées sur le cahier des charges v0.4
+
+- **Retours successifs (EF-IDU-08)** : quand l'agent quitte la section II, les dossiers qui ressemblent sont proposés. Le bouton « Même personne : nouveau retour » rattache l'entretien au dossier existant : les réponses déjà connues (état civil, filiation, éducation, pièce) sont reprises pour confirmation, et à la synchronisation l'entretien devient l'épisode n° 2, 3… du même dossier, sans nouvel identifiant. Un dossier clôturé est rouvert. Sur la fiche, la carte « Retours successifs » liste les épisodes ; chaque retour archivé reste consultable.
+- **Vérification d'identité ONECI (EF-ONE-01 à 05)** : en section IV, pour une CNI, un passeport, un extrait de naissance ou une carte consulaire. Seuls la nature, le numéro, le nom, les prénoms et la date de naissance sont transmis. Hors connexion, la demande attend la synchronisation. Le **simulateur** répond selon le dernier chiffre du numéro : 0 à 6 confirmée, 7 non confirmée, 8 non trouvée, 9 service indisponible puis renvoi automatique. Une identité non confirmée devient une tâche du superviseur, à examiner avec un motif.
+- **Consentements et retrait (EF-CON-04, EF-CON-07)** : chaque consentement est enregistré par finalité, avec la date, l'agent et la version du texte présenté. Le bouton « Enregistrer un retrait » (fiche du dossier) date le retrait sans effacer l'historique et restreint aussitôt les traitements sur le serveur : photo retirée des affichages et des documents, biométrie et pièces numérisées suspendues, ou dossier gelé hors identification. À sa synchronisation suivante, chaque tablette retire de sa base locale les données concernées.
+- **Conflits de synchronisation (ENF-SYN-05)** : aucune valeur n'en écrase une autre. Une réponse stable différente lors d'un retour successif, ou une modification faite entre-temps par un autre utilisateur (verrouillage optimiste sur « Compléter cette section »), crée un conflit. Les deux valeurs sont conservées ; le superviseur tranche dans Supervision > Conflits de synchronisation, avec un motif tracé.
+- **Annulation d'un rattachement (EF-IDU-07, RG-07)** : sur un doublon confirmé, « Annuler le rattachement » rétablit le dossier rattaché dans son état antérieur. Chaque référencement, alerte ou suivi enregistré depuis est réaffecté à l'un ou l'autre dossier sur décision du superviseur, et chaque réaffectation est tracée.
+- **Fiche décadactylaire (ENF-BIO-01 à 03)** : en section V, l'agent imprime une étiquette à code QR (62 × 29 mm) à coller sur la fiche papier. La fiche est numérisée au scanner du site puis déposée dans Dossiers > Fiches décadactylaires : le code QR la rattache automatiquement au bon dossier et toute numérisation sous 500 ppp est refusée. Sans scanner, la page génère des fiches de test à 500 ppp (acceptée) et à 150 ppp (refusée).
+- **Téléphones au format E.164 (EF-TEL-03)** : chaque numéro est contrôlé selon le plan de numérotation du pays choisi (bibliothèque libphonenumber-js, licence MIT) et enregistré au format international. Un numéro non conforme bloque la clôture de l'entretien.
+- **Localités à géolocaliser (EF-GEO-04, EF-ADM-05)** : une localité saisie dans « Autre » est marquée « à géolocaliser » et exclue de la carte. L'administrateur la traite dans Administration > Localités à géolocaliser : rapprochement d'une localité existante, ou ajout au référentiel avec sa région et ses coordonnées (clic sur la carte). La correction s'applique à tous les dossiers concernés, et la localité rejoint les listes des tablettes à leur synchronisation.
 
 ## Lancer la démonstration en mode local (sans internet)
 
@@ -103,9 +114,18 @@ python3 tools/gen_sw.py
 13. **Fiche dossier** : Imprimer > fiche unique du migrant (recto et verso) ou attestation de retour, puis scanner le code QR pour vérifier.
 14. **Administration générale** : utilisateurs (création d'un enquêteur et affectation d'une tablette), structures, parc de tablettes, matrice d'habilitations modifiable, statistiques (recherche multicritère et catalogue d'indicateurs OIM, DTM, ODD, Pacte mondial).
 
+Scénario complémentaire (cahier des charges v0.4) :
+
+15. **Awa Koné**, « Nouvel entretien » sur le vol affrété : appeler la dernière personne de la file d'attente. Elle est déjà enregistrée : à la sortie de la section II, choisir « Même personne : nouveau retour ». En section IV, saisir une CNI se terminant par 9, lancer la vérification ONECI (service indisponible), puis clôturer et synchroniser : la demande est renvoyée et confirmée, l'épisode n° 2 rejoint le dossier.
+16. **Mariam Touré** : Supervision > Conflits de synchronisation (arbitrage), Mes tâches (identité non confirmée par l'ONECI), Doublons > Confirmés > « Annuler le rattachement », et sur une fiche, Consentements > « Enregistrer un retrait ».
+17. **Administration générale** : Localités à géolocaliser, puis Fiches décadactylaires (fiche de test, puis dépôt).
+
 Autres cas fictifs chargés : C1 (adulte avec CNI, EJ), C2 (mineur non accompagné, DPE et DELC), C3 (traite présumée, CNLTP), C4 (santé mentale, PNSM et DMHP), C5 (enrôlée par l'OIM), C6 (AGEFOP absente à l'enrôlement).
 
 ## Limites assumées du POC
+
+- La vérification ONECI passe par un simulateur : la convention et les spécifications du service (dépendances D-08 et D-09) conditionnent le connecteur réel.
+- Fiche décadactylaire : la démonstration conserve un aperçu en niveaux de gris et l'empreinte SHA-256 de l'original ; l'original sans perte relève du stockage chiffré de la version définitive. Les formats acceptés sont PNG et JPEG (le TIFF n'est pas lisible par le navigateur).
 
 - Les restrictions partielles (XIV « orientation seulement », IV « documents seulement ») sont appliquées par l'interface ; dans la base, le contrôle se fait par section entière. Même chose pour le résumé du dossier (nom, région), lisible par toute structure concernée.
 - Le suivi en direct entre onglets repose, en mode local, sur l'événement de stockage du navigateur ; avec Supabase, sur le temps réel. L'envoi automatique des rapports programmés et l'hébergement du portail de vérification relèvent du serveur définitif [adresse à confirmer].

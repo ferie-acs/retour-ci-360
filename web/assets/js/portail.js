@@ -26,10 +26,11 @@
   async function charger() {
     const db = Store.db;
     const opt = (t) => db.list(t).catch(() => []);
-    const [ds, refs, als, dbl, sites, arrivees, transferts, approbations, parametres, rapports, annonces, relais] = await Promise.all([db.listDossiers(), db.list('referencements'), db.list('alertes'), opt('doublons'), opt('sites'), opt('arrivees'), opt('transferts'), opt('approbations'), opt('parametres'), opt('rapports'), opt('annonces'), opt('relais')]);
+    const [ds, refs, als, dbl, sites, arrivees, transferts, approbations, parametres, rapports, annonces, relais, conflits, localites] = await Promise.all([db.listDossiers(), db.list('referencements'), db.list('alertes'), opt('doublons'), opt('sites'), opt('arrivees'), opt('transferts'), opt('approbations'), opt('parametres'), opt('rapports'), opt('annonces'), opt('relais'), opt('conflits'), opt('localites')]);
+    Identite.fusionnerLocalites(localites);
     const p = App.profil;
     const acces = ds.map((d) => ({ d, motif: Domaine.concerne(p, d, refs, als) })).filter((x) => x.motif);
-    return { ds, refs, als, dbl, acces, sites, arrivees, transferts, approbations, parametres, rapports, annonces, relais };
+    return { ds, refs, als, dbl, acces, sites, arrivees, transferts, approbations, parametres, rapports, annonces, relais, conflits, localites };
   }
   const nomVisible = (p, d) => (Domaine.droits(p, 'II').includes('L') ? `${d.resume.nom || ''} ${d.resume.prenoms || ''}`.trim() : null);
   const mesRefs = (p, refs) => (p.role === 'admin' ? refs : refs.filter((r) => r.destinataire === p.structure || r.emetteur === p.structure || (p.role === 'superviseur' && r.emetteur === p.structure)));
@@ -40,7 +41,7 @@
     h('div', { class: 'card-h' }, h('h3', { class: 'title' }, h('span', { class: 'ticon ' + teinte }, icon(ic)), titre), droite || null), ...corps);
   const AV = ['b', 'o', 'g', 'v', 'p', 't'];
   const avatar = (txt, i) => h('span', { class: 'av ticon ' + AV[i % AV.length] }, UI.initials(txt || '?'));
-  const drapeau = (nomPays) => { const x = REF.pays.find((y) => y.n === nomPays); return x ? x.f : ''; };
+  const drapeau = (nomPays) => UI.drapeauPays(nomPays);
 
   P.render = async function (root, view, id) {
     const p = App.profil;
@@ -51,12 +52,15 @@
     App.badge('alertes', mesAlertes(p, data.als).filter((a) => a.statut === 'Ouverte').length);
     App.badge('doublons', data.dbl.filter((x) => x.statut === 'À examiner').length);
     const v = view || 'tableau';
+    try { App.badge('conflits', Cycle.visibles(p, data).length); App.badge('localites', Identite.aGeolocaliser(data.ds).length, 'o'); } catch (e) { console.warn(e); }
     try { App.badge('taches', Taches.calculer(p, data).filter((x) => x.priorite !== 'Basse').length, 'o'); App.badge('arrivees', data.arrivees.filter((a) => a.statut === 'En cours').length); App.badge('annonces', Annonces.nonLues(p, data.annonces).length, 'o'); } catch (e) { console.warn(e); }
     const ADMIN = { 'admin-utilisateurs': ['utilisateurs', ['admin', 'superviseur']], 'admin-structures': ['structures_', ['admin']], 'admin-tablettes': ['tablettes_', ['admin']], habilitations: [null, ['admin']], journal: [null, ['admin', 'superviseur']], doublons: [null, ['admin', 'superviseur']],
-      qualite: [null, ['admin', 'superviseur', 'responsable']], rapports: [null, ['admin', 'superviseur', 'responsable']], parametres: [null, ['admin']], pilotage: [null, ['admin', 'responsable']] };
+      qualite: [null, ['admin', 'superviseur', 'responsable']], rapports: [null, ['admin', 'superviseur', 'responsable']], parametres: [null, ['admin']], pilotage: [null, ['admin', 'responsable']],
+      conflits: [null, ['admin', 'superviseur']], localites: [null, ['admin']] };
     if (ADMIN[v] && !ADMIN[v][1].includes(p.role)) { page.append(h('div', { class: 'notice danger' }, icon('lock'), 'Cette page est réservée à l\'administration de la plateforme.')); UI.refreshIcons(); return; }
     const MODULES = { sites: () => Sites.sites(page, data), arrivees: () => Sites.arrivees(page, data), arrivee: () => Sites.arrivee(page, data, id), taches: () => Taches.page(page, data), reglages: () => Reglages.page(page, p, data), pilotage: () => Pilotage.page(page, data), pipeline: () => Pipeline.page(page, data), annonces: () => Annonces.page(page, p, data.annonces, data.arrivees),
-      qualite: () => Qualite.page(page, data), rapports: () => Qualite.rapports(page, data), parametres: () => Taches.parametres(page, data) };
+      qualite: () => Qualite.page(page, data), rapports: () => Qualite.rapports(page, data), parametres: () => Taches.parametres(page, data),
+      conflits: () => Cycle.conflitsPage(page, data), localites: () => Identite.localitesPage(page, data), fiches: () => Identite.fichesPage(page, data) };
     if (v === 'dossier') await P.fiche(page, data, id);
     else if (MODULES[v]) await MODULES[v]();
     else if (v === 'statistiques') Stats.page(page, data);
@@ -238,10 +242,10 @@
   const kmEtapes = (e) => e.reduce((s2, x, i) => (i ? s2 + distance(e[i - 1].ll, x.ll) : 0), 0);
   const kmDossier = (d) => kmEtapes(Form.etapes(d.itineraire || {}));
   const moisAbsence = (r) => { if (!r['PAR-001'] || !r['IDT-019']) return null; const a = new Date(r['PAR-001'] + '-01'), b = new Date(r['IDT-019']); return (b - a) / (30.44 * 86400000); };
-  const drapeauCode = (c) => (REF.pays.find((x) => x.c === c) || {}).f || '';
+  const drapeauCode = (c) => UI.drapeau(c);
 
   /* Étapes numérotées, ville par ville, regroupées par pays */
-  P.etapesListe = (et) => h('div', { class: 'route-steps' }, et.map((e, i) => h('div', { class: 'rs' }, h('span', { class: 'n' }, i + 1), h('span', { class: 'flag' }, drapeauCode(e.code)),
+  P.etapesListe = (et) => h('div', { class: 'route-steps' }, et.map((e, i) => h('div', { class: 'rs' }, h('span', { class: 'n' }, i + 1), drapeauCode(e.code),
     h('div', null, h('b', null, e.n), h('div', { class: 'tiny muted' }, e.pays + (i === 0 ? ' · départ' : i === et.length - 1 ? ' · dernière étape avant le retour' : ''))))));
 
   P.parcours = function (c, ds) {
@@ -345,7 +349,7 @@
       prov: (d) => d.resume.provenance || '', retour: (d) => d.reponses['IDT-019'] || '', region: (d) => d.resume.region_retour || '', enrol: (d) => d.synced_at || d.created_at || '', comp: (d) => Agent.progression(d),
     };
     const uniques = (fn) => [...new Set(tous.map(fn).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
-    const filtre = (cle, lib, items) => h('div', { style: { width: '190px' } }, UI.dropdown({ items: [{ value: '', label: lib + ' : tous' }].concat(items.map((x) => ({ value: x, label: x, flag: cle === 'prov' ? ((REF.pays.find((y) => y.n === x) || {}).f || '') : '' }))), value: '', placeholder: lib, onChange: (v) => { f[cle] = v; page = 1; paint(); } }).el);
+    const filtre = (cle, lib, items) => h('div', { style: { width: '190px' } }, UI.dropdown({ items: [{ value: '', label: lib + ' : tous' }].concat(items.map((x) => ({ value: x, label: x, flag: cle === 'prov' ? ((REF.pays.find((y) => y.n === x) || {}).c || '') : '' }))), value: '', placeholder: lib, onChange: (v) => { f[cle] = v; page = 1; paint(); } }).el);
     const resultats = () => tous.filter((d) => {
       const t = UI.norm([d.identifiant, val.nom(d), d.resume.localite_retour, d.resume.provenance, d.structure, d.resume.region_retour, (ARR[d.arrivee_id] || {}).code].join(' '));
       return (!f.q || t.includes(UI.norm(f.q))) && (!f.sexe || d.resume.sexe === f.sexe) && (!f.cat || d.resume.categorie === f.cat) && (!f.prov || d.resume.provenance === f.prov) && (!f.region || d.resume.region_retour === f.region) && (!f.struct || d.structure === f.struct) && (!f.arr || (ARR[d.arrivee_id] || {}).code === f.arr);
@@ -372,7 +376,7 @@
             h('td', { style: { whiteSpace: 'nowrap' } }, h('div', { class: 'who' }, h('span', { class: 'av ticon ' + ['b', 'o', 'g', 'v', 'p', 't'][i % 6] }, nom ? UI.initials(nom) : icon('user-round')),
               h('div', null, nom ? h('b', null, nom) : h('span', { class: 'masked' }, '••••••'), h('div', { class: 'tiny muted' }, [d.resume.sexe, (d.resume.categorie || '').split(' (')[0]].filter(Boolean).join(' · '))))),
             h('td', { style: { whiteSpace: 'nowrap' } }, val.age(d) >= 0 ? val.age(d) + ' ans' : '—'),
-            h('td', { style: { whiteSpace: 'nowrap' } }, ((REF.pays.find((y) => y.n === d.resume.provenance) || {}).f || '') + ' ', d.resume.provenance || '—'),
+            h('td', { style: { whiteSpace: 'nowrap' } }, drapeau(d.resume.provenance), ' ', d.resume.provenance || '—'),
             h('td', { style: { whiteSpace: 'nowrap' } }, d.reponses['IDT-019'] ? UI.fmtDate(d.reponses['IDT-019']) : '—', ARR[d.arrivee_id] ? h('div', null, h('a', { class: 'tiny', href: '#/portail/arrivee/' + d.arrivee_id }, ARR[d.arrivee_id].code)) : h('div', { class: 'tiny muted' }, d.reponses['IDT-017'] || '')),
             h('td', null, d.resume.localite_retour || '—', h('div', { class: 'tiny muted' }, d.resume.region_retour || '')),
             h('td', null, h('div', { class: 'who' }, Admin.logo(d.structure, 28), h('div', null, h('b', null, d.structure), h('div', { class: 'tiny muted' }, UI.fmtDate(val.enrol(d)))))),
@@ -423,7 +427,7 @@
           h('td', null, h('span', { class: 'idlink' }, d.identifiant), d.cas ? h('div', { class: 'tiny muted' }, 'Cas type ' + d.cas) : null),
           h('td', null, h('div', { class: 'who' }, avatar(nom || '? ?', i), nom ? h('b', null, nom) : h('span', { class: 'masked' }, '••••••'))),
           h('td', null, h('div', { class: 'row', style: { gap: '4px' } }, h('span', { class: 'badge solid ' + (f.mineur ? 'violet' : 'ok') }, f.mineur ? 'Mineur' : 'Adulte'), f.mna ? h('span', { class: 'badge solid danger' }, 'MNA') : null, f.traite ? h('span', { class: 'badge solid warn' }, 'Traite') : null)),
-          h('td', null, drapeau(d.resume.provenance) + ' ', d.resume.localite_retour || '—', h('div', { class: 'tiny muted' }, d.resume.region_retour || '')),
+          h('td', null, drapeau(d.resume.provenance), ' ', d.resume.localite_retour || '—', h('div', { class: 'tiny muted' }, d.resume.region_retour || '')),
           h('td', null, h('div', { class: 'who' }, Admin.logo(d.structure, 28), h('div', null, h('b', null, d.structure), h('div', { class: 'tiny muted' }, UI.fmtDate(d.synced_at))))),
           h('td', null, h('span', { class: 'badge grey' }, motif)), h('td', null, icon('chevron-right')));
       }))));
@@ -466,7 +470,7 @@
           return h('tr', { class: 'click', 'data-id': d.id, title: 'Afficher le trajet sur la carte', onclick: () => montrer(d) },
             h('td', null, h('a', { class: 'idlink', href: '#/portail/dossier/' + d.id, onclick: (e) => e.stopPropagation() }, d.identifiant), d.cas ? h('div', { class: 'tiny muted' }, 'Cas type ' + d.cas) : null, h('div', { class: 'row', style: { gap: '4px', marginTop: '3px' } }, h('span', { class: 'badge solid ' + (fl.mineur ? 'violet' : 'ok') }, fl.mineur ? 'Mineur' : 'Adulte'), fl.mna ? h('span', { class: 'badge solid danger' }, 'MNA') : null, fl.traite ? h('span', { class: 'badge solid warn' }, 'Traite') : null)),
             h('td', null, h('div', { class: 'who' }, avatar(nom || '? ?', i), nom ? h('b', null, nom) : h('span', { class: 'masked' }, '••••••'))),
-            h('td', null, drapeau(d.resume.provenance) + ' ', d.resume.provenance || '—', lireVIII && et.length > 1 ? h('div', { class: 'tiny muted' }, et.length + ' étapes') : null),
+            h('td', null, drapeau(d.resume.provenance), ' ', d.resume.provenance || '—', lireVIII && et.length > 1 ? h('div', { class: 'tiny muted' }, et.length + ' étapes') : null),
             h('td', null, h('div', { class: 'who' }, Admin.logo(d.structure, 26), h('div', null, h('b', null, d.structure), h('div', { class: 'tiny muted' }, UI.fmtDate(d.synced_at))))),
             h('td', null, h('span', { class: 'badge grey' }, motif)), h('td', null, lireVIII && et.length > 1 ? icon('route') : null));
         })))));
@@ -528,7 +532,16 @@
         (d.contributions || []).length ? h('div', null, h('span', { class: 'tiny muted' }, 'Entretien à plusieurs mains'), h('span', { class: 'row', style: { gap: '6px' } }, d.contributions.map((k) => h('span', { class: 'badge info', title: k.agent }, Admin.logo(k.structure, 16), ' ' + k.structure + ' : ' + (k.sections.length > 3 ? k.sections[0] + ' à ' + k.sections[k.sections.length - 1] : k.sections.join(', ')))))) : null,
         h('div', null, h('span', { class: 'tiny muted' }, 'Validation superviseur'), d.valide ? h('span', { class: 'badge ok' }, icon('check'), 'Validé par ' + d.valide.par) : valid ? h('span', { class: 'badge warn' }, 'En attente') : h('span', { class: 'badge grey' }, 'Non requise')))));
 
-    const peutReferencer = p.role === 'admin' || Domaine.droits(p, 'XIV').includes('S');
+    const suspendu = Cycle.suspendu(d); const confl = Cycle.ouverts(data, d); const eps = Cycle.episodes(d); const derOneci = Identite.derniere(d);
+    if (suspendu || (d.retraits || []).length) c.append(h('div', { class: 'notice ' + (suspendu ? 'danger' : 'warn'), style: { marginBottom: '16px' } }, icon('shield-x'),
+      h('span', null, h('b', null, 'Consentement retiré'), ' — ' + (d.retraits || []).map((k) => Cycle.FINALITES[k].effet).join(' '))));
+    if (confl.length) c.append(h('div', { class: 'notice warn', style: { marginBottom: '16px' } }, icon('git-compare-arrows'),
+      h('span', { style: { flex: 1 } }, h('b', null, confl.length + ' conflit(s) de synchronisation'), ' en attente d\'arbitrage : ' + confl.map((x) => x.code + ' (' + x.libelle + ')').join(', ') + '. Le dossier conserve la valeur du serveur jusqu\'à la décision.'),
+      ['admin', 'superviseur'].includes(p.role) ? h('a', { class: 'btn sm', href: '#/portail/conflits' }, 'Arbitrer') : null));
+    const badges = c.querySelector('.dossier-head .row');
+    if (badges && eps.length > 1) badges.append(h('span', { class: 'badge info' }, icon('repeat'), eps.length + ' retours'));
+    if (badges && derOneci) badges.append(h('span', { class: 'badge ' + Identite.badgeStatut(derOneci.statut) }, icon('badge-check'), 'ONECI : ' + derOneci.statut.toLowerCase()));
+    const peutReferencer = !suspendu && (p.role === 'admin' || Domaine.droits(p, 'XIV').includes('S'));
     const grid = h('div', { class: 'fiche-grid' });
     const left = h('div'); const right = h('div', { class: 'stack' });
     /* Quinze tiroirs fermés n'apprenaient rien : le premier écran d'un dossier ne montrait
@@ -545,6 +558,10 @@
         lst((d.suivis || []).slice().reverse(), (sv) => h('div', { class: 'li' }, h('span', { class: 'ticon g' }, icon(sv.type === 'Visite à domicile' ? 'house' : sv.type === 'Appel téléphonique' ? 'phone' : 'messages-square')), h('div', { class: 'grow' }, h('div', { class: 't1' }, sv.type + ' — ' + UI.fmtDate(sv.date)), h('div', { class: 't2' }, sv.note + ' (' + sv.par + ', ' + sv.structure + ')'))), 'Aucun suivi enregistré.')),
       P.carte('siren', 'r', 'Alertes', null,
         lst(als, (a) => h('div', { class: 'li' }, h('div', { class: 'grow' }, h('div', { class: 't1' }, a.titre), h('div', { class: 't2' }, a.statut + (a.pris_par ? ' par ' + a.pris_par : ''))), h('span', { class: 'badge solid ' + GRAV[a.gravite] }, a.gravite)), 'Aucune alerte.')),
+      Cycle.carteEpisodes(d) || '',
+      Domaine.droits(p, 'IV').includes('L') && (d.reponses['RES-016'] || derOneci) ? h('div', { class: 'card', style: { padding: '0' } }, Identite.carteONECI(d, p, { lecture: !(['admin', 'superviseur'].includes(p.role) || ['ONECI', 'DGIE'].includes(p.structure)) || suspendu,
+        save: async () => { d.updated_at = new Date().toISOString(); await Store.db.upsertDossier(d, { sections: [] }); }, apres: () => App.render() })) : '',
+      Cycle.carteConsentements(d),
       P.carte('history', 'o', 'Historique', null, h('div', { class: 'card-b' }, h('div', { class: 'timeline' }, (d.historique || []).slice().reverse().map((e) => h('div', { class: 'ev' }, h('div', { style: { fontWeight: 600 } }, e.action), h('div', { class: 'tiny muted' }, UI.fmtDate(e.date, true) + ' — ' + e.par + (e.structure ? ' (' + e.structure + ')' : ''))))))));
     grid.append(left, right); c.append(grid);
   };
@@ -616,6 +633,8 @@
         dr.length ? h('span', { class: 'tiny muted' }, 'Droits : ' + dr.join(' ')) : h('span', { class: 'badge grey' }, icon('lock'), 'aucun accès'),
         h('span', { class: 'sens ' + sens }, 'Sensibilité ' + sens))), sb);
     if (!dr.includes('L')) { sb.append(h('div', { class: 'locked' }, icon('lock'), 'Cette section n\'est pas accessible à votre structure (matrice d\'habilitations).')); return blk; }
+    if (Cycle.suspendu(d) && !['I', 'II'].includes(s)) { sb.append(h('div', { class: 'locked' }, icon('shield-x'), 'Traitement suspendu : consentement retiré. Seules l\'identification et l\'historique restent consultables.')); return blk; }
+    if (s === 'V' && Cycle.retire(d, 'ENT-010')) { sb.append(h('div', { class: 'locked' }, icon('shield-x'), 'Traitement restreint : consentement à l\'utilisation des données retiré.')); return blk; }
     const masque = sens === 'N3' && !P.reveles.has(cle);
     if (masque) {
       sb.append(h('div', { class: 'locked' }, icon('eye-off'), 'Données de sensibilité N3 masquées par défaut.',
@@ -627,7 +646,8 @@
       const q = Domaine.Q[code]; if (!Domaine.codeAutorise(p, code)) continue;
       if (q.widget === 'hidden' || !Domaine.visible(q, d.reponses, d)) continue;
       const v = d.reponses[code]; if (v === undefined) continue; n++;
-      sb.append(h('div', { class: 'kv' }, h('span', { class: 'k' }, h('span', { class: 'qcode' }, code), ' ', q.label), h('span', null, P.fmt(v))));
+      sb.append(h('div', { class: 'kv' }, h('span', { class: 'k' }, h('span', { class: 'qcode' }, code), ' ', q.label), h('span', null, P.fmt(v),
+        Identite.estAGeolocaliser(code, v) ? h('span', { class: 'badge warn', style: { marginLeft: '8px' }, title: 'Hors référentiel : en attente de validation par l\'administrateur' }, icon('map-pin'), 'à géolocaliser') : null)));
     }
     if (s === 'VIII' && d.itineraire && Form.etapes(d.itineraire).length) {
       const et = Form.etapes(d.itineraire); const carte = h('div', { class: 'map-fiche' });
@@ -637,6 +657,7 @@
     }
     if (s === 'I' && d.medias && d.medias.documents && d.medias.documents.length) sb.append(h('div', { class: 'thumbs', style: { marginTop: '8px' } }, d.medias.documents.map((x) => h('img', { class: 'thumb', src: x }))));
     if (!n) sb.append(h('div', { class: 'small muted', style: { padding: '8px 0' } }, 'Aucune donnée renseignée.'));
+    if (s === 'V' && d.reponses['ENT-010'] === 'Oui') sb.append(Identite.blocFiche(d, Identite.peutNumeriser(p)));
     if (dr.includes('S') || dr.includes('M')) sb.append(h('div', { style: { marginTop: '10px' } }, h('button', { class: 'btn sm', onclick: () => P.completer(d, s) }, icon('pencil'), 'Compléter cette section')));
     return blk;
   };
@@ -650,11 +671,11 @@
       actions: [{ label: 'Annuler' }, { label: 'Enregistrer', cls: 'primary', icon: 'save', onclick: async () => {
         const changes = codes.filter((c) => JSON.stringify(copie.reponses[c]) !== JSON.stringify(d.reponses[c]));
         if (!changes.length) return;
-        changes.forEach((c) => { if (copie.reponses[c] === undefined) delete d.reponses[c]; else d.reponses[c] = copie.reponses[c]; });
-        d.updated_at = new Date().toISOString();
-        d.historique = d.historique || []; d.historique.push({ date: d.updated_at, par: p.nom, structure: p.structure, action: `Section ${s} complétée (${changes.join(', ')})` });
-        await Store.db.upsertDossier(d, { sections: [s] }); await Store.audit('Modification', d.identifiant, 'Section ' + s + ' : ' + changes.join(', '));
-        UI.toast('Dossier mis à jour.'); App.render();
+        /* La saisie est confrontée à la version relue à l'enregistrement : une valeur changée entre-temps
+           par un autre utilisateur n'est jamais écrasée, elle devient un conflit à arbitrer (ENF-SYN-05). */
+        const r = await Cycle.enregistrerAvecControle(d, d.reponses, copie.reponses, changes, p, 'Section ' + s + ' complétée');
+        if (r.appliques.length) await Store.audit('Modification', d.identifiant, 'Section ' + s + ' : ' + r.appliques.join(', '));
+        UI.toast(r.conflits.length ? r.conflits.length + ' réponse(s) modifiée(s) entre-temps par un autre utilisateur : soumise(s) à l\'arbitrage du superviseur.' : 'Dossier mis à jour.', r.conflits.length ? 'git-compare-arrows' : 'check'); App.render();
       } }] });
     const m = document.querySelector('.modal'); if (m) m.style.maxWidth = '820px';
   };
@@ -730,7 +751,8 @@
   /* ---------- Doublons ---------- */
   /* ---------- Doublons : comparaison côte à côte et décision du superviseur ---------- */
   P.doublonsFiltre = 'À examiner';
-  P.doublons = function (c, { dbl, ds, arrivees }) {
+  P.doublons = function (c, { dbl, ds, arrivees, refs, als }) {
+    P.donnees = { refs, als };
     const byId = Object.fromEntries(ds.map((d) => [d.id, d])); const ARR = Object.fromEntries((arrivees || []).map((a) => [a.id, a]));
     const n = (st) => dbl.filter((x) => x.statut === st).length;
     const scoreMax = (x) => Math.max(0, ...(x.candidats || []).map((k) => k.score));
@@ -744,8 +766,8 @@
     const decider = async (x, statut, principal) => {
       const motif = await UI.prompt(statut === 'Écarté' ? 'Personnes différentes' : 'Même personne : rattacher', statut === 'Écarté' ? 'Élément qui distingue les deux personnes (obligatoire) :' : 'Élément qui confirme qu\'il s\'agit de la même personne (obligatoire) :'); if (!motif) return;
       const p = App.profil; const now = new Date().toISOString();
-      Object.assign(x, { statut, decide_par: p.nom + ' (' + p.structure + ')', decision_le: now, decision_motif: motif }); await Store.db.upsert('doublons', x);
       const d = byId[x.dossier_id];
+      Object.assign(x, { statut, decide_par: p.nom + ' (' + p.structure + ')', decision_le: now, decision_motif: motif, principal_id: principal.id, avant: d ? { etat_suivi: d.etat_suivi || 'Ouvert', rattache_a: d.rattache_a || null } : null }); await Store.db.upsert('doublons', x);
       if (d && statut !== 'Écarté') { d.etat_suivi = 'Clôturé'; d.rattache_a = principal.identifiant; d.historique.push({ date: now, par: p.nom, structure: p.structure, action: 'Doublon confirmé : dossier rattaché à ' + principal.identifiant + ' (dossier principal) — ' + motif }); await Store.db.upsertDossier(d, { sections: [] });
         principal.historique = principal.historique || []; principal.historique.push({ date: now, par: p.nom, structure: p.structure, action: 'Dossier principal : ' + d.identifiant + ' y est rattaché (doublon confirmé)' }); await Store.db.upsertDossier(principal, { sections: [] }); }
       else if (d) { d.historique.push({ date: now, par: p.nom, structure: p.structure, action: 'Doublon écarté : ' + motif }); await Store.db.upsertDossier(d, { sections: [] }); }
@@ -770,9 +792,11 @@
             h('button', { class: 'btn primary', onclick: () => decider(x, 'Confirmé, à rattacher', o) }, icon('merge'), 'Même personne : rattacher à ' + o.identifiant),
             h('button', { class: 'btn', onclick: () => decider(x, 'Écarté', o) }, icon('split'), 'Personnes différentes'),
             h('span', { class: 'tiny muted' }, 'Aucune fusion automatique : le nouveau dossier est clôturé et rattaché au dossier existant, tous deux restent consultables.'))
-            : x.decide_par ? h('div', { class: 'notice', style: { marginTop: '14px' } }, icon('gavel'), 'Décision de ' + x.decide_par + ' le ' + UI.fmtDate(x.decision_le, true) + (x.decision_motif ? ' : ' + x.decision_motif : '')) : null));
+            : x.decide_par ? h('div', { class: 'notice', style: { marginTop: '14px' } }, icon('gavel'), h('span', { style: { flex: 1 } }, 'Décision de ' + x.decide_par + ' le ' + UI.fmtDate(x.decision_le, true) + (x.decision_motif ? ' : ' + x.decision_motif : '')),
+              x.statut === 'Confirmé, à rattacher' ? h('button', { class: 'btn sm', onclick: () => Cycle.annulerFusion(x, { ds, refs: P.donnees.refs, als: P.donnees.als }) }, icon('split'), 'Annuler le rattachement') : null) : null,
+          x.annulation ? h('div', { class: 'notice warn', style: { marginTop: '10px' } }, icon('split'), h('span', null, 'Rattachement annulé par ' + x.annulation.par + ' le ' + UI.fmtDate(x.annulation.date, true) + ' : ' + x.annulation.motif + (x.annulation.reaffectations.length ? ' — ' + x.annulation.reaffectations.join(' ; ') : ''))) : null));
     };
-    const ONG = [['À examiner', 'À examiner'], ['Confirmé, à rattacher', 'Confirmés'], ['Écarté', 'Écartés'], ['tous', 'Tous']];
+    const ONG = [['À examiner', 'À examiner'], ['Confirmé, à rattacher', 'Confirmés'], ['Écarté', 'Écartés'], ['Rattachement annulé', 'Annulés'], ['tous', 'Tous']];
     const paint = () => {
       tabs.innerHTML = ''; ONG.forEach(([k, l]) => tabs.append(h('button', { class: k === P.doublonsFiltre ? 'on' : '', onclick: () => { P.doublonsFiltre = k; paint(); } }, l, h('span', { class: 'badge ' + (k === P.doublonsFiltre ? 'accent' : 'grey') }, k === 'tous' ? dbl.length : n(k)))));
       const rows = dbl.filter((x) => P.doublonsFiltre === 'tous' || x.statut === P.doublonsFiltre).sort((a, b) => scoreMax(b) - scoreMax(a));

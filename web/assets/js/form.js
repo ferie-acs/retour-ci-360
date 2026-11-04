@@ -4,8 +4,8 @@
   const REF = window.REF;
   const F = {};
 
-  const paysItems = (field) => REF.pays.map((p) => ({ value: p.n, label: p.n, flag: p.f, group: p.ct, right: field === 'dial' ? p.d : '', keywords: p.c + ' ' + p.nat }));
-  const phoneItems = () => REF.pays.filter((p) => p.d).map((p) => ({ value: p.d + '|' + p.c, label: p.n, flag: p.f, group: p.ct, right: p.d }));
+  const paysItems = (field) => REF.pays.map((p) => ({ value: p.n, label: p.n, flag: p.c, group: p.ct, right: field === 'dial' ? p.d : '', keywords: p.c + ' ' + p.nat }));
+  const phoneItems = () => REF.pays.filter((p) => p.d).map((p) => ({ value: p.d + '|' + p.c, label: p.n, flag: p.c, group: p.ct, right: p.d }));
   const locItems = () => REF.localitesCI.map((l) => ({ value: l.n, label: l.n, right: l.r })).concat([{ value: '__autre', label: 'Autre localité (préciser)' }]);
 
   function seg(options, value, onChange) {
@@ -56,17 +56,31 @@
     const known = REF.localitesCI.some((l) => l.n === v);
     const wrap = h('div', { class: 'stack' });
     const other = h('input', { class: 'input' + (v && !known ? '' : ' hidden'), placeholder: 'Nom de la localité', value: v && !known ? v : '', oninput: (e) => set(e.target.value, true) });
-    const dd = dropdown({ items: locItems(), value: v && !known ? '__autre' : v, onChange: (x) => { if (x === '__autre') { other.classList.remove('hidden'); other.focus(); set(''); } else { other.classList.add('hidden'); set(x); } }, placeholder: 'Choisir une localité (la région est déduite)…' });
-    wrap.append(dd.el, other); return wrap;
+    const note = h('div', { class: 'help' + (v && !known ? '' : ' hidden') }, 'Localité hors référentiel : enregistrée sans coordonnées, marquée « à géolocaliser » et soumise à l\'administrateur. Elle n\'apparaît pas sur la carte d\'ici là.');
+    const dd = dropdown({ items: locItems(), value: v && !known ? '__autre' : v, onChange: (x) => { if (x === '__autre') { other.classList.remove('hidden'); note.classList.remove('hidden'); other.focus(); set(''); } else { other.classList.add('hidden'); note.classList.add('hidden'); set(x); } }, placeholder: 'Choisir une localité (la région est déduite)…' });
+    wrap.append(dd.el, other, note); return wrap;
   };
+  /* Téléphone : indicatif par pays (Afrique en premier), numéro contrôlé selon le plan de numérotation
+     du pays choisi et enregistré au format international E.164 (EF-TEL-01 à 04) */
   F.phone = function (v, set) {
-    v = v || { ind: '+225', num: '' };
+    v = v ? { ...v } : { ind: '+225', pays: 'CI', num: '' };
     const items = phoneItems();
-    const cur = items.find((i) => i.value.startsWith(v.ind + '|')) || items.find((i) => i.value === '+225|CI');
-    const dd = dropdown({ items, value: cur && cur.value, groupBy: true, searchPlaceholder: 'Pays ou indicatif…', onChange: (x) => { v.ind = x.split('|')[0]; set({ ...v }); } });
-    const num = h('input', { class: 'input grow', inputmode: 'tel', placeholder: 'Numéro', value: v.num || '', oninput: (e) => { v.num = e.target.value.replace(/[^\d ]/g, ''); set({ ...v }, true); } });
-    const unk = h('button', { type: 'button', class: 'btn sm ghost', onclick: () => { v.num = 'Inconnu'; num.value = 'Inconnu'; set({ ...v }); } }, 'Inconnu');
-    return h('div', { class: 'inline' }, h('div', { style: { width: '220px' } }, dd.el), num, unk);
+    const cur = items.find((i) => v.pays && i.value === v.ind + '|' + v.pays) || items.find((i) => i.value.startsWith(v.ind + '|')) || items.find((i) => i.value === '+225|CI');
+    if (cur && !v.pays) v.pays = cur.value.split('|')[1];
+    const etat = h('div', { class: 'tel-etat tiny' });
+    const controler = (quiet) => {
+      const r = Identite.controlerTel(v);
+      if (r.e164) v.e164 = r.e164; else delete v.e164;
+      v.valide = !r.vide && !!r.valide;
+      etat.className = 'tel-etat tiny' + (r.vide || r.inconnu ? '' : r.valide ? ' ok' : ' ko');
+      etat.textContent = r.vide ? '' : r.inconnu ? 'Numéro inconnu (admis pour les contacts de la famille).' : r.valide ? 'Format international : ' + r.lisible : 'Numéro non conforme au plan de numérotation : ' + ((REF.pays.find((x) => x.c === r.pays) || {}).n || r.pays) + '. Vérifier le nombre de chiffres et le préfixe.';
+      set({ ...v }, quiet);
+    };
+    const dd = dropdown({ items, value: cur && cur.value, groupBy: true, searchPlaceholder: 'Pays ou indicatif…', onChange: (x) => { [v.ind, v.pays] = x.split('|'); controler(); } });
+    const num = h('input', { class: 'input grow', inputmode: 'tel', placeholder: 'Numéro', value: v.num || '', oninput: (e) => { v.num = e.target.value.replace(/[^\d ]/g, ''); controler(true); }, onblur: () => controler() });
+    const unk = h('button', { type: 'button', class: 'btn sm ghost', onclick: () => { v.num = 'Inconnu'; num.value = 'Inconnu'; controler(); } }, 'Inconnu');
+    setTimeout(() => { const r = Identite.controlerTel(v); if (!r.vide) { etat.className = 'tel-etat tiny' + (r.inconnu ? '' : r.valide ? ' ok' : ' ko'); etat.textContent = r.inconnu ? 'Numéro inconnu.' : r.valide ? 'Format international : ' + r.lisible : 'Numéro non conforme au plan de numérotation du pays choisi.'; } }, 0);
+    return h('div', null, h('div', { class: 'inline' }, h('div', { style: { width: '220px' } }, dd.el), num, unk), etat);
   };
   F.money = function (v, set) {
     v = v || { montant: '', devise: 'XOF' };
@@ -133,14 +147,14 @@
     }
     function paint() {
       left.innerHTML = ''; let n = 0;
-      const ci = h('div', { class: 'itin-block' }, h('div', { class: 'bh' }, h('span', { class: 'flag' }, '🇨🇮'), "Côte d'Ivoire — départ et villes traversées"));
+      const ci = h('div', { class: 'itin-block' }, h('div', { class: 'bh' }, UI.drapeau('CI'), "Côte d'Ivoire — départ et villes traversées"));
       it.ci.forEach((x, i) => ci.append(stopRow(x, i, it.ci, ++n)));
       ci.append(h('div', { style: { marginTop: '8px' } }, dropdown({ items: REF.localitesCI.filter((l) => l.ll).map((l) => ({ value: l.n, label: l.n, right: l.r })), placeholder: 'Ajouter une localité ivoirienne…',
         onChange: (x) => { const l = REF.localitesCI.find((y) => y.n === x); if (it.ci.length && it.ci[it.ci.length - 1].n === x) return; it.ci.push({ n: l.n, ll: l.ll, r: l.r }); save(); } }).el));
       left.append(ci);
       it.pays.forEach((p, pi) => {
         const pr = REF.pays.find((x) => x.c === p.c);
-        const blk = h('div', { class: 'itin-block' }, h('div', { class: 'bh' }, h('span', { class: 'flag' }, pr ? pr.f : ''), p.nom, h('span', { style: { flex: 1 } }),
+        const blk = h('div', { class: 'itin-block' }, h('div', { class: 'bh' }, pr ? UI.drapeau(pr.c) : null, p.nom, h('span', { style: { flex: 1 } }),
           h('button', { type: 'button', class: 'btn sm ghost', title: 'Retirer le pays', onclick: () => { it.pays.splice(pi, 1); save(); } }, icon('trash-2'))));
         p.villes.forEach((x, i) => blk.append(stopRow(x, i, p.villes, ++n)));
         const vs = (REF.villes[p.c] || []).map((c) => ({ value: c[0], label: c[0], right: c[3] ? c[3].toLocaleString('fr-FR') + ' hab.' : '', ll: [c[1], c[2]] }));
@@ -148,7 +162,7 @@
         left.append(blk);
       });
       left.append(h('div', { class: 'itin-block' }, h('div', { class: 'bh' }, icon('plus-circle'), 'Ajouter un pays au parcours'),
-        dropdown({ items: REF.pays.filter((p) => p.c !== 'CI').map((p) => ({ value: p.c, label: p.n, flag: p.f, group: p.ct })), groupBy: true, placeholder: 'Pays (Afrique en premier)…',
+        dropdown({ items: REF.pays.filter((p) => p.c !== 'CI').map((p) => ({ value: p.c, label: p.n, flag: p.c, group: p.ct })), groupBy: true, placeholder: 'Pays (Afrique en premier)…',
           onChange: (c) => { const p = REF.pays.find((x) => x.c === c); it.pays.push({ c, nom: p.n, villes: p.cap ? [{ n: p.cap.n, ll: p.cap.ll, defaut: true }] : [] }); save(); } }).el));
       UI.refreshIcons(); paintMap();
     }

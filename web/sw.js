@@ -5,7 +5,7 @@
    La VERSION est dérivée du contenu des fichiers (empreinte SHA-256). Modifier un seul fichier
    change le nom du cache, ce qui force une vraie mise à jour : c'est ce qui évite de servir
    indéfiniment un ancien script, le défaut classique des applications mises en cache. */
-const VERSION = 'r360-2174267c6569';
+const VERSION = 'r360-8b9ecdc791b4';
 const SHELL = [
   "./",
   "./index.html",
@@ -16,6 +16,7 @@ const SHELL = [
   "./assets/data/metier.js",
   "./assets/data/metier_gen.js",
   "./assets/data/referentiels.js",
+  "./assets/img/drapeaux.png",
   "./assets/img/embleme.png",
   "./assets/img/favicon.png",
   "./assets/img/icon-192.png",
@@ -29,10 +30,12 @@ const SHELL = [
   "./assets/js/carte.js",
   "./assets/js/charts.js",
   "./assets/js/config.js",
+  "./assets/js/cycle.js",
   "./assets/js/documents.js",
   "./assets/js/domaine.js",
   "./assets/js/export.js",
   "./assets/js/form.js",
+  "./assets/js/identite.js",
   "./assets/js/pilotage.js",
   "./assets/js/pipeline.js",
   "./assets/js/portail.js",
@@ -57,8 +60,10 @@ const SHELL = [
   "./assets/vendor/images/marker-shadow.png",
   "./assets/vendor/jspdf.plugin.autotable.min.js",
   "./assets/vendor/jspdf.umd.min.js",
+  "./assets/vendor/jsqr.min.js",
   "./assets/vendor/leaflet.css",
   "./assets/vendor/leaflet.js",
+  "./assets/vendor/libphonenumber-min.js",
   "./assets/vendor/lucide.min.js",
   "./assets/vendor/qrcode.js",
   "./assets/vendor/supabase.js",

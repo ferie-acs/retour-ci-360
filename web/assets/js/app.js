@@ -71,11 +71,11 @@
     portail: (p) => [
       ['Principal', [['tableau', 'layout-dashboard', 'Tableau de bord'], ['taches', 'list-checks', 'Mes tâches'], ['annonces', 'megaphone', 'Canal de diffusion'], ['statistiques', 'chart-pie', 'Statistiques']]],
       ['Accueil des migrants', [['sites', 'map-pin', 'Sites'], ['arrivees', 'plane-landing', 'Arrivées']]],
-      ['Dossiers', [['pipeline', 'git-branch', 'Pipeline du parcours'], ['migrants', 'users', 'Migrants enregistrés'], ['dossiers', 'folder-open', 'Dossiers'], ['referencements', 'send', 'Référencements'], ['alertes', 'siren', 'Alertes']]],
+      ['Dossiers', [['pipeline', 'git-branch', 'Pipeline du parcours'], ['migrants', 'users', 'Migrants enregistrés'], ['dossiers', 'folder-open', 'Dossiers'], ['referencements', 'send', 'Référencements'], ['alertes', 'siren', 'Alertes']].concat(Identite.peutNumeriser(p) ? [['fiches', 'scan-line', 'Fiches décadactylaires']] : [])],
       ['responsable', 'admin'].includes(p.role) ? ['Pilotage', [['pilotage', 'gauge-circle', 'Vue du responsable']].concat(p.role === 'responsable' ? [['qualite', 'gauge', 'Qualité des données'], ['rapports', 'calendar-clock', 'Rapports programmés']] : [])] : null,
-      p.role === 'superviseur' ? ['Supervision', [['doublons', 'copy', 'Doublons'], ['qualite', 'gauge', 'Qualité des données'], ['rapports', 'calendar-clock', 'Rapports programmés'], ['admin-utilisateurs', 'user-cog', 'Comptes de ma structure'], ['journal', 'scroll-text', 'Journal d\'audit']]] : null,
-      p.role === 'admin' ? ['Supervision', [['doublons', 'copy', 'Doublons'], ['qualite', 'gauge', 'Qualité des données'], ['rapports', 'calendar-clock', 'Rapports programmés']]] : null,
-      p.role === 'admin' ? ['Administration', [['admin-utilisateurs', 'user-cog', 'Utilisateurs'], ['admin-structures', 'building-2', 'Structures'], ['admin-tablettes', 'tablet', 'Tablettes'], ['habilitations', 'shield-check', 'Habilitations'], ['parametres', 'sliders-horizontal', 'Validations'], ['journal', 'scroll-text', 'Journal d\'audit']]] : null,
+      p.role === 'superviseur' ? ['Supervision', [['doublons', 'copy', 'Doublons'], ['conflits', 'git-compare-arrows', 'Conflits de synchronisation'], ['qualite', 'gauge', 'Qualité des données'], ['rapports', 'calendar-clock', 'Rapports programmés'], ['admin-utilisateurs', 'user-cog', 'Comptes de ma structure'], ['journal', 'scroll-text', 'Journal d\'audit']]] : null,
+      p.role === 'admin' ? ['Supervision', [['doublons', 'copy', 'Doublons'], ['conflits', 'git-compare-arrows', 'Conflits de synchronisation'], ['qualite', 'gauge', 'Qualité des données'], ['rapports', 'calendar-clock', 'Rapports programmés']]] : null,
+      p.role === 'admin' ? ['Administration', [['admin-utilisateurs', 'user-cog', 'Utilisateurs'], ['admin-structures', 'building-2', 'Structures'], ['admin-tablettes', 'tablet', 'Tablettes'], ['habilitations', 'shield-check', 'Habilitations'], ['localites', 'map-pin-plus', 'Localités à géolocaliser'], ['parametres', 'sliders-horizontal', 'Validations'], ['journal', 'scroll-text', 'Journal d\'audit']]] : null,
       ['Public', [['donnees-ouvertes', 'globe', 'Données ouvertes']]],
       ['Compte', [['reglages', 'settings', 'Paramètres']]],
     ].filter(Boolean),
@@ -260,7 +260,7 @@
     document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { const i = document.querySelector('.hsearch input'); if (i) { e.preventDefault(); i.focus(); } } });
     App.mode = await Store.init();
     /* Version du jeu de données fictif : une nouvelle version recharge automatiquement la démonstration locale */
-    const VERSION_DONNEES = '2026-10-05g';
+    const VERSION_DONNEES = '2026-11-04a';
     if (App.mode === 'local' && Store.LS.get('r360.version', null) !== VERSION_DONNEES) { const pr = Store.LS.get('r360.profil', null); await Store.Local.reset(); Store.LS.set('r360.version', VERSION_DONNEES); if (pr) Store.LS.set('r360.profil', pr); }
     if (App.mode === 'local') await Seed.seed(Store.Local);
     try { await Admin.charger(); } catch (e) { console.warn('Administration', e); }

@@ -50,6 +50,12 @@
     });
     // 5. Doublons à examiner
     if (estSup(p)) data.dbl.filter((x) => x.statut === 'À examiner').forEach((x) => out.push({ cat: 'validations', ic: 'copy', t: 'p', titre: 'Examiner un doublon possible', detail: (x.candidats || []).map((c) => c.identifiant + ' (score ' + c.score + ')').join(', '), dossier: { id: x.dossier_id, identifiant: x.identifiant, nom: '' }, echeance: null, priorite: 'Moyenne', actions: [{ label: 'Examiner', fn: () => App.go('#/portail/doublons') }] }));
+    // 5 bis. Conflits de synchronisation à arbitrer, identités non confirmées par l'ONECI
+    if (estSup(p)) Cycle.visibles(p, data).forEach((x) => out.push({ cat: 'validations', ic: 'git-compare-arrows', t: 'p', titre: 'Arbitrer un conflit de synchronisation — ' + x.code, detail: x.libelle + ' : « ' + Portail.fmt(x.serveur.v) + ' » ou « ' + Portail.fmt(x.entrant.v) + ' » · ' + x.origine,
+      dossier: { id: x.dossier_id, identifiant: x.identifiant, nom: nom(dossier(x.dossier_id)) }, echeance: new Date(new Date(x.created_at).getTime() + jours(2)).toISOString(), priorite: 'Haute', actions: [{ label: 'Arbitrer', cls: 'primary', fn: () => Cycle.arbitrer(x, dossier(x.dossier_id)) }] }));
+    if (estSup(p)) data.ds.filter((d) => (p.role === 'admin' || d.structure === p.structure) && Identite.aExaminer(d)).forEach((d) => out.push({ cat: 'validations', ic: 'badge-check', t: 'r', titre: 'Identité non confirmée par l\'ONECI', detail: Identite.derniere(d).motif + ' — ' + Identite.derniere(d).nature + ' ' + Identite.derniere(d).piece,
+      dossier: { id: d.id, identifiant: d.identifiant, nom: nom(d) }, echeance: null, priorite: 'Haute', actions: [{ label: 'Examiner', cls: 'primary', fn: () => Identite.examiner(d) }] }));
+    if (p.role === 'admin') { const n = Identite.aGeolocaliser(data.ds).length; if (n) out.push({ cat: 'validations', ic: 'map-pin-plus', t: 'o', titre: n + ' localité(s) à géolocaliser', detail: 'Saisies hors référentiel : à rapprocher d\'une localité existante ou à ajouter avec leurs coordonnées.', dossier: null, echeance: null, priorite: 'Moyenne', actions: [{ label: 'Traiter', fn: () => App.go('#/portail/localites') }] }); }
     // 6. Suivis à échéance
     if (p.role !== 'admin') data.ds.filter((d) => T.responsable(d) === p.structure && d.statut === 'Synchronisé' && (d.etat_suivi || 'Ouvert') === 'Ouvert').forEach((d) => {
       const ech = T.echeanceSuivi(d); const reste = (new Date(ech) - now) / jours(1);

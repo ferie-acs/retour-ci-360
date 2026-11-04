@@ -2,8 +2,7 @@
 (function () {
   const { h, icon } = UI; const M = window.METIER;
   const S = { etat: null };
-  const pays = (n) => (REF.pays.find((x) => x.n === n) || {}).f || '';
-  const XOF = { XOF: 1, EUR: 655.957, USD: 600, MAD: 60, TND: 195, DZD: 4.5, LYD: 125, GBP: 770 };
+    const XOF = { XOF: 1, EUR: 655.957, USD: 600, MAD: 60, TND: 195, DZD: 4.5, LYD: 125, GBP: 770 };
   const enXOF = (m) => (m && m.montant && XOF[m.devise] ? +m.montant * XOF[m.devise] : null);
   const TRANCHES = ['0-14 ans', '15-17 ans', '18-24 ans', '25-34 ans', '35-44 ans', '45-59 ans', '60 ans et plus'];
   const tranche = (a) => (a === null || a === undefined || a === '' ? null : a < 15 ? TRANCHES[0] : a < 18 ? TRANCHES[1] : a < 25 ? TRANCHES[2] : a < 35 ? TRANCHES[3] : a < 45 ? TRANCHES[4] : a < 60 ? TRANCHES[5] : TRANCHES[6]);
@@ -176,7 +175,7 @@
     const masque = (n) => (petit && UI.estMasque(n) ? UI.libMasque() : n);
 
     // Formulaire multicritère : chaque liste comporte sa recherche
-    const options = (k) => { const vs = new Set(); tous.forEach((d) => [].concat(DIM[k].f(d) || []).forEach((x) => x && vs.add(x))); return ordonner([...vs].sort((a, b) => String(a).localeCompare(String(b), 'fr')), k).map((x) => ({ value: x, label: x, flag: ['provenance', 'transit'].includes(k) ? pays(x) : '' })); };
+    const options = (k) => { const vs = new Set(); tous.forEach((d) => [].concat(DIM[k].f(d) || []).forEach((x) => x && vs.add(x))); return ordonner([...vs].sort((a, b) => String(a).localeCompare(String(b), 'fr')), k).map((x) => ({ value: x, label: x, flag: ['provenance', 'transit'].includes(k) ? ((REF.pays.find((y) => y.n === x) || {}).c || '') : '' })); };
     const grille = h('div', { class: 'filtres' },
       FILTRES.filter((k) => peut(DIM[k].s)).map((k) => h('div', null, h('label', { class: 'q' }, DIM[k].l), UI.dropdown({ items: options(k), value: st.f[k] || [], multiple: true, placeholder: 'Tous', onChange: (v) => { st.f[k] = v; tout(); } }).el)),
       h('div', null, h('label', { class: 'q' }, 'Retour à partir du'), h('input', { class: 'input', type: 'date', value: st.du, onchange: (e) => { st.du = e.target.value; tout(); } })),
@@ -213,7 +212,7 @@
           if (choix === 'secteurs') graphe.append(h('div', { class: 'donut-legend' }, Charts.secteurs({ items }), Charts.legende(items, r.base)));
           else if (choix === 'barres' || choix === 'courbe') graphe.append(Charts.groupes({ etiquettes: items.map((x) => x.label), series: [{ nom: ind.l, couleur: '#FE7701', valeurs: items.map((x) => x.v) }] }));
           else if (choix === 'tableau') graphe.append(tableau(['Modalité', 'Effectif', 'Part'], items.map((x) => [x.label, masque(x.v), x.pct + ' %'])));
-          else graphe.append(Charts.hbarres({ items: items.map((x) => ({ ...x, label: (pays(x.label) ? pays(x.label) + ' ' : '') + x.label })), couleur: '#014A96' }));
+          else graphe.append(Charts.hbarres({ items: items.map((x) => ({ ...x, label: x.label })), couleur: '#014A96' }));
           lignes.push(['Modalité', 'Effectif', 'Part (%)'], ...r.items.map((x) => [x.label, x.v, x.pct]));
         }
       } else if (r.t === 'taux') {
@@ -294,7 +293,7 @@
       const sx = rep('sexe'); galerie.append(carte('venus-and-mars', 'p', ['Répartition par sexe', aideInd('sexe')], h('div', { class: 'donut-legend' }, Charts.secteurs({ items: sx.map((x, i) => ({ ...x, couleur: ['#014A96', '#FE7701', '#C8CFD6'][i] })), taille: 170 }), Charts.legende(sx.map((x, i) => ({ ...x, couleur: ['#014A96', '#FE7701', '#C8CFD6'][i] })), sx.reduce((a, x) => a + x.v, 0))), 'sexe', lig(sx)));
       [['provenance', 'globe', 'v', 'Pays de provenance', '#014A96'], ['motif', 'target', 'g', 'Motifs de départ', '#2F7D22'], ['vulntypes', 'shield-alert', 'r', 'Vulnérabilités', '#D92D20'], ['besoins', 'hand-heart', 'o', 'Besoins immédiats', '#FE7701'], ['region', 'map-pin', 't', 'Régions de retour', '#0E6B63'], ['education', 'graduation-cap', 'b', 'Niveau d\'étude', '#4B3F8C']].forEach(([id, ic, t, titre, col]) => {
         const it = rep(id); if (!it) return;
-        galerie.append(carte(ic, t, [titre, aideInd(id, 'Les modalités sont classées de la plus fréquente à la moins fréquente ; seules les 6 premières sont représentées ici. Le détail complet est dans l\'analyse de l\'indicateur.')], it.length ? Charts.hbarres({ items: it.map((x) => ({ ...x, label: (pays(x.label) ? pays(x.label) + ' ' : '') + x.label })), couleur: col, largeur: 480 }) : h('div', { class: 'empty' }, 'Aucune donnée'), id, lig(it)));
+        galerie.append(carte(ic, t, [titre, aideInd(id, 'Les modalités sont classées de la plus fréquente à la moins fréquente ; seules les 6 premières sont représentées ici. Le détail complet est dans l\'analyse de l\'indicateur.')], it.length ? Charts.hbarres({ items: it.map((x) => ({ ...x, label: x.label })), couleur: col, largeur: 480 }) : h('div', { class: 'empty' }, 'Aucune donnée'), id, lig(it)));
       });
       UI.refreshIcons();
     }

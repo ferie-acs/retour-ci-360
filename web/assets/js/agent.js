@@ -113,6 +113,7 @@
         ctx.onChangeHooks.forEach((f) => f(code));
         ctx.refreshers.forEach((f) => f());
         verifierAlerte(code);
+        if (Cycle.FINALITES[code]) Cycle.noterConsentement(d, code, d.reponses[code], p);
         if (code === 'ENT-009' || code === 'ENT-010') paintSteps();
         ctx.save(quiet);
       },
@@ -194,12 +195,19 @@
       d.doublonsSignales = res.map((x) => ({ id: x.dossier.id, identifiant: x.dossier.identifiant || x.dossier.identifiantProvisoire, score: x.score, regles: x.regles }));
       Store.Tablette.save(p.tablette, d);
       if (!res.length) return;
-      UI.modal({ title: 'Doublon possible', icon: 'copy', body: h('div', { class: 'stack' },
-        h('p', { style: { margin: 0 } }, 'Les dossiers suivants présentent des similitudes. Aucune fusion n\'est réalisée automatiquement : le cas est signalé au superviseur pour examen.'),
-        h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Dossier', 'Nom', 'Naissance', 'Enrôlé par', 'Score', 'Règles'].map((x) => h('th', null, x)))),
+      /* Un dossier déjà synchronisé peut être celui de la personne, revenue après une nouvelle migration :
+         l'agent l'indique et l'entretien devient un nouvel épisode de ce dossier (EF-IDU-08). */
+      let fen = null;
+      const episode = (x) => (x.dossier.identifiant && x.dossier.statut === 'Synchronisé' && !d.episode_de
+        ? h('button', { class: 'btn sm primary', onclick: async () => { const ex = (await Store.db.getDossier(x.dossier.id)) || x.dossier; Cycle.rattacherEpisode(d, ex, p); Store.Tablette.save(p.tablette, d); fen.close(); UI.toast('Nouvel épisode de retour du dossier ' + ex.identifiant + ' : ' + d.prerempli.length + ' réponse(s) déjà connue(s) proposée(s).', 'repeat'); App.render(); } }, icon('repeat'), 'Même personne : nouveau retour')
+        : null);
+      fen = UI.modal({ title: 'Doublon possible', icon: 'copy', body: h('div', { class: 'stack' },
+        h('p', { style: { margin: 0 } }, 'Les dossiers suivants présentent des similitudes. Si la personne est déjà enregistrée et revient après une nouvelle migration, rattachez l\'entretien à son dossier : un nouvel épisode de retour y sera créé. Sinon, aucune fusion n\'est réalisée automatiquement : le cas est signalé au superviseur pour examen.'),
+        h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Dossier', 'Nom', 'Naissance', 'Enrôlé par', 'Score', 'Règles', ''].map((x) => h('th', null, x)))),
           h('tbody', null, res.slice(0, 5).map((x) => h('tr', null, h('td', null, x.dossier.identifiant || x.dossier.identifiantProvisoire), h('td', null, (x.dossier.resume || {}).nom + ' ' + (x.dossier.resume || {}).prenoms),
-            h('td', null, UI.fmtDate((x.dossier.resume || {}).date_naissance)), h('td', null, x.dossier.structure + ', ' + (x.dossier.site || '')), h('td', null, h('span', { class: 'badge ' + (x.score >= 85 ? 'danger' : 'warn') }, x.score)), h('td', { class: 'small' }, x.regles.join(' ; '))))))),
-        actions: [{ label: 'Poursuivre l\'entretien', cls: 'primary' }] });
+            h('td', null, UI.fmtDate((x.dossier.resume || {}).date_naissance)), h('td', null, x.dossier.structure + ', ' + (x.dossier.site || '')), h('td', null, h('span', { class: 'badge ' + (x.score >= 85 ? 'danger' : 'warn') }, x.score)), h('td', { class: 'small' }, x.regles.join(' ; ')), h('td', null, episode(x)))))))),
+        actions: [{ label: 'Personne différente : poursuivre', cls: '' }] });
+      fen.el.style.maxWidth = '980px';
     }
     function paintBody() {
       body.innerHTML = ''; ctx.refreshers = []; ctx.onChangeHooks = [];
@@ -212,6 +220,13 @@
       const form = Form.section(d, codesOf(cur), ctx);
       if (lecture) form.querySelectorAll('input, textarea, button, canvas').forEach((x) => { x.disabled = true; x.style.pointerEvents = 'none'; });
       card.append(form);
+      if (d.episode_de && (d.prerempli || []).some((c) => Domaine.Q[c].sect === cur)) card.prepend(h('div', { class: 'notice', style: { marginBottom: '10px' } }, icon('repeat'), 'Réponses reprises du dossier ' + d.episode_de.identifiant + ' : à confirmer auprès de la personne, ou à corriger. Un écart avec le dossier sera soumis au superviseur.'));
+      if (cur === 'IV') { const v = Identite.carteONECI(d, p, { lecture, enLigne: () => Store.Tablette.online(p.tablette), save: () => ctx.save(true) });
+        ctx.onChangeHooks.push((code) => { if (['RES-014', 'RES-015', 'RES-016'].includes(code)) v.peindre(); }); card.append(v); }
+      if (cur === 'V' && d.reponses['ENT-010'] === 'Oui') card.append(h('div', { class: 'card flat', style: { marginTop: '14px', padding: '14px' } },
+        h('div', { class: 'row between' }, h('div', { class: 'row', style: { gap: '10px' } }, h('span', { class: 'ticon v' }, icon('qr-code')),
+          h('div', null, h('b', null, 'Fiche décadactylaire papier'), h('div', { class: 'tiny muted' }, 'Imprimez l\'étiquette et collez-la en haut à droite de la fiche avant le relevé. La fiche est ensuite numérisée au scanner du site ; le code QR la rattache automatiquement à ce dossier.'))),
+          h('button', { type: 'button', class: 'btn sm', onclick: () => Identite.etiquette(d) }, icon('printer'), 'Imprimer l\'étiquette'))));
       if (cur === 'I' && !consentOk(d)) card.append(h('div', { class: 'notice danger', style: { marginTop: '10px' } }, icon('lock'), 'Sans consentement éclairé (ENT-009 = Oui), l\'entretien ne peut pas se poursuivre.'));
       const prev = idx > 0 ? h('button', { class: 'btn', onclick: () => go(SECT_ORDER[idx - 1]) }, icon('arrow-left'), 'Précédent') : h('span');
       const next = idx < SECT_ORDER.length - 1
@@ -229,12 +244,13 @@
     }
     function cloturer() {
       derive();
-      const manq = SECT_ORDER.flatMap((s) => A.manquants(d, s).map((q) => ({ s, q })));
+      const manq = SECT_ORDER.flatMap((s) => A.manquants(d, s).map((q) => ({ s, q })))
+        .concat(Identite.telephonesInvalides(d).map((q) => ({ s: q.sect, q: { ...q, label: q.label + ' — numéro non conforme au plan de numérotation' } })));
       const sansSig = !d.medias.signature;
       if (manq.length || sansSig) {
         UI.modal({ title: 'Entretien incomplet', icon: 'list-checks', body: h('div', { class: 'stack' },
           sansSig ? h('div', { class: 'notice warn' }, icon('pen-line'), 'La signature du migrant (SUI-004) est requise.') : null,
-          manq.length ? h('p', { style: { margin: 0 } }, `${manq.length} question(s) obligatoire(s) sans réponse :`) : null,
+          manq.length ? h('p', { style: { margin: 0 } }, `${manq.length} question(s) obligatoire(s) sans réponse ou mal renseignée(s) :`) : null,
           h('div', { style: { maxHeight: '300px', overflow: 'auto' } }, manq.slice(0, 60).map(({ s, q }) => h('div', { class: 'row', style: { padding: '4px 0', borderBottom: '1px solid #EEF1F4' } },
             h('span', { class: 'qcode' }, q.code), h('span', { style: { flex: 1 } }, q.label), h('button', { class: 'btn sm', onclick: () => { document.querySelector('.modal-bg').remove(); go(s); setTimeout(() => { const el = document.querySelector(`[data-code="${q.code}"]`); el && el.scrollIntoView({ block: 'center' }); }, 60); } }, 'Aller'))))),
           actions: [{ label: 'Continuer la saisie', cls: 'primary' }, { label: 'Clôturer quand même (démonstration)', onclick: () => valider(true) }] });
@@ -267,6 +283,9 @@
       d.correction_demandee ? h('div', { class: 'notice warn', style: { marginBottom: '14px' } }, icon('undo-2'),
         h('span', null, h('b', null, 'Correction demandée par ' + d.correction_demandee.de), ' — sections '
           + d.correction_demandee.sections.join(', ') + ' : « ' + d.correction_demandee.motif + ' »')) : null,
+      d.episode_de ? h('div', { class: 'notice', style: { marginBottom: '14px' } }, icon('repeat'),
+        h('span', { style: { flex: 1 } }, h('b', null, 'Retour successif'), ' — cet entretien sera rattaché au dossier ' + d.episode_de.identifiant + ' (' + d.episode_de.nom + ') comme épisode de retour n° ' + d.episode_de.n + '. Aucun nouveau dossier n\'est créé.'),
+        !lecture ? h('button', { class: 'btn sm', onclick: () => { Cycle.annulerRattachementEpisode(d, p); Store.Tablette.save(p.tablette, d); UI.toast('Rattachement annulé : l\'entretien sera enregistré comme une nouvelle personne.', 'undo-2'); App.render(); } }, icon('undo-2'), 'Annuler le rattachement') : null) : null,
       (d.contributions || []).length ? h('div', { class: 'notice', style: { marginBottom: '14px' } }, icon('users'), 'Entretien à plusieurs mains : ' + d.contributions.map((c) => c.structure + ' (' + c.agent + ') sections ' + c.sections.join(', ')).join(' ; ') + '.') : null,
       h('div', { class: 'wizard' }, stepsEl, body)));
     paintSteps(); paintBody();
@@ -275,11 +294,15 @@
   /* ---------- Synchronisation : attribution de l'identifiant national, création des référencements et des alertes ---------- */
   A.synchroniser = async function (p) {
     const prets = Store.Tablette.list(p.tablette).filter((d) => d.statut === 'Prêt à synchroniser');
-    if (!prets.length) return;
+    if (!prets.length) { await Cycle.appliquerRetraitsTablette(p); App.render(); return; }
     const db = Store.db; let ok = 0;
     try {
       for (const d of prets) {
         const now = new Date().toISOString();
+        /* demandes ONECI conservées hors connexion : envoyées maintenant */
+        const v = Identite.traiterEnAttente(d, p);
+        if (v && v.statut === 'Erreur du service') Identite.traiterEnAttente(d, p);
+        if (d.episode_de) { await A.synchroniserEpisode(d, p, now); ok++; continue; }
         const n = await db.nextNumero(); d.identifiant = Domaine.identifiant(new Date().getFullYear(), n);
         d.statut = 'Synchronisé'; d.synced_at = now; d.updated_at = now;
         if ((d.contributions || []).length) { const deja = new Set(d.contributions.flatMap((c) => c.sections)); d.contributions.push({ structure: p.structure, agent: p.nom, tablette: p.tablette, sections: SECT_ORDER.filter((x) => !deja.has(x)), date: now }); }
@@ -301,8 +324,30 @@
         ok++;
       }
       UI.toast(`${ok} entretien(s) synchronisé(s) avec la base centrale.`, 'cloud-upload');
+      await Cycle.appliquerRetraitsTablette(p);
     } catch (e) { console.error(e); UI.toast('Échec de la synchronisation : ' + (e.message || e), 'alert-triangle'); }
     App.render();
+  };
+  /* Retour successif : l'entretien rejoint le dossier existant comme nouvel épisode ; l'identifiant national est conservé */
+  A.synchroniserEpisode = async function (d, p, now) {
+    const db = Store.db;
+    const existant = await db.getDossier(d.episode_de.id);
+    if (!existant) throw new Error('Dossier ' + d.episode_de.identifiant + ' introuvable sur le serveur');
+    const r = await Cycle.fusionnerEpisode(existant, d, p);
+    const central = r.dossier; await db.upsertDossier(central);
+    for (const a of d.alertes || []) await db.upsert('alertes', { id: a.id, dossier_id: central.id, identifiant: central.identifiant, regle: a.regle, titre: a.titre, gravite: a.gravite, notifie: a.notifie, delai: a.delai, conduite: a.conduite, emetteur: p.structure, created_at: now, statut: 'Ouverte', pris_par: null });
+    for (const x of (d.referencementsProposes || []).filter((y) => y.destinataire)) {
+      const t = M.TYPES_SERVICE.find((y) => y.code === x.type_service) || M.TYPES_SERVICE[5];
+      await db.upsert('referencements', { id: x.id, dossier_id: central.id, identifiant: central.identifiant, beneficiaire: central.resume.nom + ' ' + central.resume.prenoms, emetteur: p.structure, destinataire: x.destinataire, type_service: t.code,
+        motif: x.motif || '', statut: 'Émis', created_at: now, echeance_reception: new Date(Date.now() + t.reception * 3600000).toISOString(), historique: [{ date: now, statut: 'Émis', par: p.structure }] });
+    }
+    if (d.arrivee_id) { try { await Sites.majPassager(d.arrivee_id, d.passager_id, { statut: 'Enregistré', dossier_id: central.id, identifiant: central.identifiant, agent: p.nom, structure: p.structure, site_id: d.site_id, nom: central.resume.nom, prenoms: central.resume.prenoms, sexe: central.resume.sexe }, p); } catch (e) { console.warn('Arrivée', e); } }
+    await Taches.apresSynchro(central, p);
+    Object.assign(d, { identifiant: central.identifiant, statut: 'Synchronisé', synced_at: now, updated_at: now, fusionne_dans: central.id, episode_n: r.n });
+    d.historique.push({ date: now, par: p.nom, structure: p.structure, action: 'Synchronisation : épisode de retour n° ' + r.n + ' rattaché au dossier ' + central.identifiant + (r.conflits.length ? ' (' + r.conflits.length + ' conflit(s) soumis au superviseur)' : '') });
+    Store.Tablette.save(p.tablette, d);
+    await Store.audit('Synchronisation d\'un retour successif', central.identifiant, 'Épisode n° ' + r.n + ' depuis la tablette ' + p.tablette + (r.conflits.length ? ', ' + r.conflits.length + ' conflit(s)' : ''));
+    if (r.conflits.length) UI.toast(r.conflits.length + ' réponse(s) différente(s) du dossier : soumises à l\'arbitrage du superviseur.', 'git-compare-arrows');
   };
   /* ---------- Prise de relais : une structure commence l'entretien, une autre le poursuit sur le même migrant ---------- */
   const sectionsFaites = (d) => SECT_ORDER.filter((s) => codesOf(s).some((c) => d.reponses[c] !== undefined && Domaine.Q[c].widget !== 'auto') && !A.manquants(d, s).length);
@@ -397,7 +442,9 @@
   /* Annonces et arrivées sur la tablette : lues en ligne, conservées pour la consultation hors connexion */
   A.annoncesTablette = async function (p) {
     const k = 'r360.tablette.annonces.' + p.tablette;
-    if (Store.Tablette.online(p.tablette)) { try { const annonces = await Store.db.list('annonces'); const arrivees = await Store.db.list('arrivees'); Store.LS.set(k, annonces); Store.LS.set('r360.tablette.arrivees.' + p.tablette, arrivees); return { annonces, arrivees }; } catch (e) { /* lecture locale */ } }
+    const kl = 'r360.tablette.localites.' + p.tablette;
+    if (Store.Tablette.online(p.tablette)) { try { const annonces = await Store.db.list('annonces'); const arrivees = await Store.db.list('arrivees'); const loc = await Store.db.list('localites').catch(() => []); Store.LS.set(k, annonces); Store.LS.set('r360.tablette.arrivees.' + p.tablette, arrivees); Store.LS.set(kl, loc); Identite.fusionnerLocalites(loc); return { annonces, arrivees }; } catch (e) { /* lecture locale */ } }
+    Identite.fusionnerLocalites(Store.LS.get(kl, []));
     return { annonces: Store.LS.get(k, []), arrivees: Store.LS.get('r360.tablette.arrivees.' + p.tablette, []) };
   };
   window.Agent = A;

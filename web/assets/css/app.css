@@ -344,6 +344,10 @@ label.q { display: block; font-weight: 700; margin-bottom: 6px; }
 .dd-opt.sel { font-weight: 800; color: var(--orange-text); }
 .dd-opt .right { margin-left: auto; color: var(--muted); font-size: var(--t-sm); }
 .dd-opt .flag, .flag { font-size: var(--t-lg); }
+/* Drapeaux : planche locale img/drapeaux.png (flag-icons, MIT), cases de 20 × 15 */
+.drap { display: inline-block; flex: none; width: 20px; height: 15px; vertical-align: -2px; border-radius: 2px; background: url(../img/drapeaux.png) no-repeat; background-size: 320px auto; box-shadow: 0 0 0 1px rgba(16, 24, 40, .12); }
+.route-steps .rs .drap { transform: scale(1.2); margin: 0 3px; }
+.thumbx .drap { transform: scale(1.4); }
 .dd-empty { padding: 16px; color: var(--muted); text-align: center; }
 .tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .tag { display: inline-flex; align-items: center; gap: 4px; background: var(--orange-soft); color: var(--orange-text); border-radius: var(--r-sm); padding: 1px 8px; font-size: var(--t-sm); font-weight: 700; }
@@ -941,3 +945,18 @@ html[data-calme="1"] *, html[data-calme="1"] *::before, html[data-calme="1"] *::
   .sheet { animation: none; }
 }
 html[data-calme="1"] .tb-item:active { transform: none; }
+
+/* ---------- Identité, fiche décadactylaire, conflits (cahier des charges v0.4) ---------- */
+.tel-etat { margin-top: 6px; color: var(--muted); min-height: 0; }
+.tel-etat.ok { color: var(--green-text); }
+.tel-etat.ko { color: var(--danger); font-weight: 700; }
+.depot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 180px; border: 2px dashed var(--line); border-radius: var(--radius); cursor: pointer; text-align: center; padding: 20px; color: var(--ink-2); }
+.depot:hover { border-color: var(--orange); background: var(--orange-softer); }
+.depot svg.lucide { width: 34px; height: 34px; color: var(--orange); }
+.fiche-img { width: 180px; border: 1px solid var(--line); border-radius: var(--r-sm); background: #fff; }
+.choix-conflit, .conflit-val { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 14px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+.choix-conflit { cursor: pointer; font: inherit; color: inherit; }
+.choix-conflit:hover { border-color: var(--blue); }
+.choix-conflit.on { border-color: var(--blue); box-shadow: 0 0 0 2px var(--blue-soft); background: var(--blue-soft); }
+.conflit-val.retenu { border-color: var(--ok); background: var(--ok-soft); }
+.conflit-val b, .choix-conflit b { font-size: var(--t-lg); }

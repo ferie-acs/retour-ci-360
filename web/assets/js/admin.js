@@ -16,11 +16,11 @@
   Ad.ROLES = ROLES;
   /* Rôles autorisés selon la structure : l'administration générale est réservée à la DGIE ; les autres structures
      commencent au rôle de gestionnaire de cas ; le rôle d'agent enquêteur suppose une structure habilitée à enrôler */
-  Ad.rolesAutorises = function (code) {
-    const s = (Ad.structures || []).find((x) => x.code === code) || {};
   /* Structures habilitées à conduire un entretien sur tablette. L'ONECI ouvre le parcours
      (état civil, identification, biométrie) ; la DGIE et l'OIM peuvent mener l'entretien complet. */
   const ENROLEURS = ['DGIE', 'OIM', 'ONECI'];
+  Ad.rolesAutorises = function (code) {
+    const s = (Ad.structures || []).find((x) => x.code === code) || {};
     if (code === 'DGIE') return ['agent', 'superviseur', 'gestionnaire', 'responsable', 'admin'];
     return [s.enrolement ? 'agent' : null, 'gestionnaire', 'superviseur', 'responsable'].filter(Boolean);
   };

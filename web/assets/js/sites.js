@@ -154,7 +154,7 @@
     const ddSite = UI.dropdown({ items: sites.map((s) => ({ value: s.id, label: s.nom, right: s.type })), value: a.site_id, onChange: (v) => { a.site_id = v; const s = sites.find((x) => x.id === v); if (s && !a.structures_presentes.length) { a.structures_presentes = s.structures || []; ddStr.set(a.structures_presentes); } } });
     UI.modal({ title: 'Enregistrer une arrivée', icon: 'plane-landing', body: h('div', { class: 'form-grid' },
       champ('Type d\'arrivée', UI.dropdown({ items: Object.keys(TYPES_ARR).map((k) => ({ value: k, label: k })), value: a.type, onChange: (v) => { a.type = v; } }).el),
-      champ('Numéro du vol ou du convoi', numero), champ('Pays de provenance', UI.dropdown({ items: [{ value: 'Plusieurs pays', label: 'Plusieurs pays' }].concat(REF.pays.filter((x) => x.c !== 'CI').map((x) => ({ value: x.n, label: x.n, flag: x.f }))), onChange: (v) => { a.provenance = v; } }).el),
+      champ('Numéro du vol ou du convoi', numero), champ('Pays de provenance', UI.dropdown({ items: [{ value: 'Plusieurs pays', label: 'Plusieurs pays' }].concat(REF.pays.filter((x) => x.c !== 'CI').map((x) => ({ value: x.n, label: x.n, flag: x.c }))), onChange: (v) => { a.provenance = v; } }).el),
       champ('Ville de provenance', ville), champ('Site d\'accueil', ddSite.el), champ('Date et heure prévues', date),
       champ('Organisateur du retour', UI.dropdown({ items: M.structures.map((x) => ({ value: x.code, label: x.code + ' — ' + x.nom })), value: a.organisateur, onChange: (v) => { a.organisateur = v; } }).el),
       champ('Nombre de personnes attendues', nb, 'Mis à jour automatiquement à l\'import du manifeste.'),
